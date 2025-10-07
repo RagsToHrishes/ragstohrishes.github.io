@@ -7,5 +7,5 @@ import react from '@astrojs/react';
 export default defineConfig({
   integrations: [react()],
   site: 'https://ragstohrishes.github.io',
-  base: '/ragstohrishes.github.io/'
+  base: '/'
 });
