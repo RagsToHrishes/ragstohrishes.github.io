@@ -13,6 +13,7 @@ interface ResearchProjectProps {
     github?: string;
     demo?: string;
     data?: string;
+    website?: string;
   };
   authors?: string | string[];
   acceptedAt?: string;
@@ -144,9 +145,9 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
                 🐙 GitHub
               </a>
             )}
-            {links.demo && (
-              <a href={normalizeUrl(links.demo)} className={`${styles.link} ${styles.demoLink}`} target="_blank" rel="noopener noreferrer">
-                🚀 Demo
+            {links.website && (
+              <a href={normalizeUrl(links.website)} className={`${styles.link} ${styles.websiteLink}`} target="_blank" rel="noopener noreferrer">
+                🚀 Website
               </a>
             )}
             {links.data && (
