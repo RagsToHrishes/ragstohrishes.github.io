@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from "react";
 
-// Canvas-only interactive Pachinko with air + bucket ball-ball collisions,
-// spatial hashing for performance, stable stacking, counters, random deflections,
-// and a Galton Demo custom event.
+// Canvas Pachinko with:
+// • Air + bucket ball-ball collisions (spatial hash in air)
+// • OFF-SCREEN TOP FUNNEL (not rendered) that constrains initial ball positions/collisions
+// • Stable stacking, per-bucket counters, random peg deflections, and a Galton Demo custom event
 export default function PachinkoCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -41,6 +42,7 @@ export default function PachinkoCanvas() {
     };
     type Peg = { x: number; y: number; r: number };
     type Bucket = { x: number; y: number; width: number; height: number; balls: Ball[] };
+    type Segment = { x1: number; y1: number; x2: number; y2: number };
 
     const state = {
       w: 0,
@@ -49,7 +51,11 @@ export default function PachinkoCanvas() {
       balls: [] as Ball[],
       pegs: [] as Peg[],
       buckets: [] as Bucket[],
+      segments: [] as Segment[], // OFF-SCREEN funnel walls
       bucketY: 0,
+      funnelGap: 30,   // opening width at the bottom of the funnel (px)
+      funnelDepth: 160,// vertical depth of the funnel above the visible region
+      renderFunnel: false, // not rendered by default
     };
 
     const ballColors = ["#E94822", "#F2910A", "#EFD510", "#00D4AA", "#6C5CE7", "#FD79A8", "#C0C0C0", "#FFD700"];
@@ -75,6 +81,7 @@ export default function PachinkoCanvas() {
       state.bucketY = state.h * 0.85;
       generatePegs();
       generateBuckets();
+      generateOffscreenFunnel();
     }
 
     function generatePegs() {
@@ -100,6 +107,25 @@ export default function PachinkoCanvas() {
       for (let i = 0; i < bucketCount; i++) state.buckets.push({ x: i*width, y, width, height, balls: [] });
     }
 
+    // Create an OFF-SCREEN funnel above the canvas. Balls will spawn inside and collide with it
+    // before entering the visible area, yielding a narrow initial distribution.
+    function generateOffscreenFunnel() {
+      const gap = state.funnelGap; // opening at bottom of funnel
+      const depth = state.funnelDepth; // how tall the funnel is (offscreen)
+      const cx = state.w * 0.5;
+      const botY = -10;              // just above the visible top edge
+      const topY = botY - depth;     // further offscreen
+      const leftTopX = Math.max(10, cx - state.w * 0.35);
+      const rightTopX = Math.min(state.w - 10, cx + state.w * 0.35);
+      const leftBotX = cx - gap * 0.5;
+      const rightBotX = cx + gap * 0.5;
+
+      state.segments = [
+        { x1: leftTopX,  y1: topY, x2: leftBotX,  y2: botY },
+        { x1: rightTopX, y1: topY, x2: rightBotX, y2: botY },
+      ];
+    }
+
     function getBucketIndexForX(x: number) {
       const idx = Math.floor((x / state.w) * state.buckets.length);
       return Math.max(0, Math.min(state.buckets.length - 1, idx));
@@ -114,13 +140,21 @@ export default function PachinkoCanvas() {
       state.balls.push(ball);
     }
 
+    // Spawn N balls inside the offscreen funnel opening so they collide with funnel walls
+    function spawnFromFunnel(n: number, color?: string) {
+      const cx = state.w * 0.5;
+      const botY = -10; // bottom (offscreen) edge of funnel
+      for (let i = 0; i < n; i++) {
+        const x = cx + (Math.random() - 0.5) * Math.max(8, state.funnelGap * 0.6);
+        const y = botY - 2 - Math.random() * 8; // just inside the funnel
+        createBall(x, y, color);
+      }
+    }
+
     function spawnGaltonDemo() {
       state.balls.length = 0;
-      for (let i = 0; i < 200; i++) {
-        const x = state.w * 0.5 + (Math.random() - 0.5) * 40;
-        createBall(x, 50, "#C0C0C0");
-      }
-      createBall(state.w * 0.5, 50, "#FFD700");
+      spawnFromFunnel(200, "#C0C0C0"); // many silver balls from funnel
+      spawnFromFunnel(1, "#FFD700");  // one gold ball
     }
 
     // --- Collision helpers ---
@@ -158,6 +192,29 @@ export default function PachinkoCanvas() {
           const ix = imp * nx, iy = imp * ny;
           a.vx -= ix; a.vy -= iy; b.vx += ix; b.vy += iy;
         }
+      }
+    }
+
+    // Circle vs segment (funnel walls). Push ball out and reflect velocity.
+    function resolveBallSegment(ball: Ball, s: Segment) {
+      const vx = s.x2 - s.x1, vy = s.y2 - s.y1;
+      const len2 = vx*vx + vy*vy || 1;
+      const t = Math.max(0, Math.min(1, ((ball.x - s.x1)*vx + (ball.y - s.y1)*vy) / len2));
+      const cx = s.x1 + t * vx, cy = s.y1 + t * vy; // closest point on segment
+      const dx = ball.x - cx, dy = ball.y - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < ball.r) {
+        const nx = dx / (dist || 1), ny = dy / (dist || 1);
+        const pen = ball.r - dist;
+        ball.x += nx * pen;
+        ball.y += ny * pen;
+        const vn = ball.vx * nx + ball.vy * ny;
+        const tx = -ny, ty = nx;
+        const vt = ball.vx * tx + ball.vy * ty;
+        const newVn = -vn * Math.max(PEG_BOUNCE, 0.55);
+        const newVt = vt * 0.95;
+        ball.vx = newVn * nx + newVt * tx;
+        ball.vy = newVn * ny + newVt * ty;
       }
     }
 
@@ -207,7 +264,7 @@ export default function PachinkoCanvas() {
 
       for (const b of state.buckets) b.balls.length = 0;
 
-      // Integrate and handle walls + pegs
+      // Integrate and handle walls + offscreen funnel + pegs
       for (const ball of state.balls) {
         // gravity
         ball.vy += GRAVITY * dt;
@@ -219,6 +276,11 @@ export default function PachinkoCanvas() {
         if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = -ball.vx * BOUNCE; }
         if (ball.x + ball.r > state.w) { ball.x = state.w - ball.r; ball.vx = -ball.vx * BOUNCE; }
 
+        // OFF-SCREEN funnel collisions: apply while ball is near the top edge or above it
+        if (ball.y < 60) {
+          for (const s of state.segments) resolveBallSegment(ball, s);
+        }
+
         // peg collisions while above bucket line
         if (ball.y < state.bucketY - ball.r) {
           for (const peg of state.pegs) resolveBallPeg(ball, peg);
@@ -227,7 +289,7 @@ export default function PachinkoCanvas() {
         }
       }
 
-      // --- NEW: Airborne ball-ball collisions via spatial hash ---
+      // Airborne ball-ball collisions via spatial hash
       collideAirWithGrid();
 
       // Now bucket region constraints + per-bucket classification
@@ -243,7 +305,7 @@ export default function PachinkoCanvas() {
           if (ball.y > floor) { ball.y = floor; if (ball.vy > 0) ball.vy = -ball.vy * BOUNCE; }
 
           ball.isOnFloor = Math.abs(ball.y - floor) < FLOOR_SLOP;
-          if (ball.isOnFloor) { ball.vx *= groundDrag; if (Math.abs(ball.vy) < 8) ball.vy = 0; }
+          if (ball.isOnFloor) { ball.vx *= GROUND_DRAG; if (Math.abs(ball.vy) < 8) ball.vy = 0; }
           else { ball.vx *= airDrag; ball.vy *= airDrag; }
 
           bucket.balls.push(ball);
@@ -274,7 +336,6 @@ export default function PachinkoCanvas() {
     }
 
     function update(dt: number) {
-      // simple fixed-substep integrator to avoid tunnelling/overlaps in crowded scenes
       const step = dt / SUBSTEPS;
       for (let s = 0; s < SUBSTEPS; s++) integrate(step);
     }
@@ -285,6 +346,7 @@ export default function PachinkoCanvas() {
       g.addColorStop(0, '#000'); g.addColorStop(0.5, '#0b0b0b'); g.addColorStop(1, '#000');
       ctx.fillStyle = g; ctx.fillRect(0, 0, state.w, state.h);
 
+      // buckets
       for (const bucket of state.buckets) {
         ctx.fillStyle = 'rgba(51,51,51,0.85)';
         ctx.fillRect(bucket.x, bucket.y, bucket.width, bucket.height);
@@ -293,6 +355,23 @@ export default function PachinkoCanvas() {
         ctx.textAlign = 'center';
         ctx.fillText(`${bucket.balls.length}`, bucket.x + bucket.width/2, bucket.y + 16);
       }
+
+      // NOTE: funnel is intentionally NOT drawn (offscreen); set renderFunnel=true to visualize for debugging
+      if (state.renderFunnel) drawFunnel();
+    }
+
+    function drawFunnel() {
+      ctx.save();
+      ctx.strokeStyle = '#444';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      for (const s of state.segments) {
+        ctx.beginPath();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.stroke();
+      }
+      ctx.restore();
     }
 
     function drawPegs() {
@@ -335,7 +414,10 @@ export default function PachinkoCanvas() {
     function onPointerDown(e: PointerEvent) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left; const y = e.clientY - rect.top;
-      if (y < state.bucketY - BALL_RADIUS) {
+      // If clicking near the top, spawn from offscreen funnel instead of exact click point
+      if (y < 80) {
+        spawnFromFunnel(1);
+      } else if (y < state.bucketY - BALL_RADIUS) {
         const jitter = (Math.random() - 0.5) * 24;
         createBall(x + jitter, Math.max(40, y));
       }
@@ -357,7 +439,6 @@ export default function PachinkoCanvas() {
       canvas.removeEventListener('galtonDemo', handleGaltonDemo);
     };
   }, []);
-
 
   return (
     <>

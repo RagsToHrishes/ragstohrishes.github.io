@@ -44,14 +44,14 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
           </button>
         </div>
         <div class="nav-center">
-          <h2 class="text-gradient mb-0">Hrish Leen</h2>
+          <a href="/" class="nav-home text-gradient mb-0" aria-label="Home">
+            Hrish Leen
+          </a>
         </div>
         <div class="nav-right">
           <ul class="nav-links">
-            <li><a href="/" class="nav-link">Home</a></li>
             <li><a href="/research" class="nav-link">Research</a></li>
             <li><a href="/resume" class="nav-link">Resume</a></li>
-            <li><a href="/about" class="nav-link">About</a></li>
             <li><a href="/contact" class="nav-link">Contact</a></li>
           </ul>
         </div>
@@ -162,10 +162,18 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
   }
   
-  .nav h2 {
+  .nav-home {
     color: #FFB366;
     font-weight: 800;
     text-shadow: 0 4px 8px rgba(0, 0, 0, 0.8);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  
+  .nav-home:hover,
+  .nav-home:focus-visible {
+    color: #FFD1A3;
   }
   
   .nav-link {

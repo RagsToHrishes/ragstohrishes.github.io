@@ -26,20 +26,13 @@ const Hero: React.FC = () => {
           Hi, I'm <span className={styles.nameHighlight}>Hrish Leen</span>
         </h1>
         
-        <div className={`${styles.heroImage} animate-fade-in`} style={{ animationDelay: '0.2s' }}>
-          <div className={styles.imageContainer}>
-            <div className={styles.profilePlaceholder}>
-              <div className={styles.placeholderIcon}>
-                <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <p className={styles.placeholderText}>Your Photo Here</p>
-            </div>
-            <div className={styles.imageGlow}></div>
-          </div>
-        </div>
+    
+        <img 
+          src="/images/selfie.jpeg" 
+          alt="Hrish Leen" 
+          className={styles.profileImage}
+        />
+         
         
         <div className={`${styles.heroRole} animate-fade-in-up`} style={{ animationDelay: '0.4s' }}>
           <span className={styles.roleText}>I'm a </span>
