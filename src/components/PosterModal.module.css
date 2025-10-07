@@ -65,6 +65,7 @@
   padding: var(--spacing-lg);
   overflow: hidden;
   position: relative;
+  touch-action: none;
 }
 
 .posterImage {
@@ -75,6 +76,8 @@
   transition: transform var(--transition-normal);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
+  transform-origin: center center;
+  user-select: none;
 }
 
 .posterImage:active {

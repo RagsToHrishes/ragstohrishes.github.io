@@ -6,7 +6,7 @@ interface ResearchProjectProps {
   title: string;
   description: string;
   mediaUrl?: string;
-  mediaType?: 'image' | 'video';
+  mediaType?: 'image' | 'gif' | 'video';
   posterUrl?: string;
   links: {
     paper?: string;
@@ -14,6 +14,8 @@ interface ResearchProjectProps {
     demo?: string;
     data?: string;
   };
+  authors?: string | string[];
+  acceptedAt?: string;
   tags: string[];
 }
 
@@ -24,9 +26,32 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
   mediaType,
   posterUrl,
   links,
+  authors,
+  acceptedAt,
   tags
 }) => {
   const [isPosterModalOpen, setIsPosterModalOpen] = useState(false);
+
+  const normalizeUrl = (url: string) => {
+    if (!url) return url;
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) return trimmedUrl;
+    const hasProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmedUrl);
+    return hasProtocol ? trimmedUrl : `https://${trimmedUrl}`;
+  };
+
+  const parseAuthors = (value?: string | string[]) => {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map((author) => author.trim()).filter(Boolean);
+    }
+    return value
+      .split(',')
+      .map((author) => author.trim())
+      .filter(Boolean);
+  };
+
+  const parsedAuthors = parseAuthors(authors);
 
   const renderMedia = () => {
     if (!mediaUrl || !mediaType) {
@@ -49,13 +74,21 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
       );
     }
 
+    if (mediaType === 'image' || mediaType === 'gif') {
+      return (
+        <div className={styles.projectMedia}>
+          <img 
+            src={mediaUrl} 
+            alt={title}
+            className={styles.mediaContent}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className={styles.projectMedia}>
-        <img 
-          src={mediaUrl} 
-          alt={title}
-          className={styles.mediaContent}
-        />
+        <span>Unsupported media type</span>
       </div>
     );
   };
@@ -68,6 +101,25 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
         <div className={styles.projectContent}>
           <h3 className={styles.projectTitle}>{title}</h3>
           
+          {parsedAuthors.length > 0 && (
+            <p className={styles.projectAuthors}>
+              {parsedAuthors.map((name, index) => (
+                <React.Fragment key={`${name}-${index}`}>
+                  <span className={name.toLowerCase() === 'hrish leen' ? styles.authorHighlight : undefined}>
+                    {name}
+                  </span>
+                  {index < parsedAuthors.length - 1 && ', '}
+                </React.Fragment>
+              ))}
+            </p>
+          )}
+
+          {acceptedAt && (
+            <p className={styles.projectVenue}>
+              <em>{acceptedAt}</em>
+            </p>
+          )}
+          
           <p className={styles.projectDescription}>{description}</p>
           
           <div className={styles.projectTags}>
@@ -78,22 +130,22 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
           
           <div className={styles.projectLinks}>
             {links.paper && (
-              <a href={links.paper} className={`${styles.link} ${styles.paperLink}`} target="_blank" rel="noopener noreferrer">
+              <a href={normalizeUrl(links.paper)} className={`${styles.link} ${styles.paperLink}`} target="_blank" rel="noopener noreferrer">
                 📄 Paper
               </a>
             )}
             {links.github && (
-              <a href={links.github} className={`${styles.link} ${styles.githubLink}`} target="_blank" rel="noopener noreferrer">
+              <a href={normalizeUrl(links.github)} className={`${styles.link} ${styles.githubLink}`} target="_blank" rel="noopener noreferrer">
                 🐙 GitHub
               </a>
             )}
             {links.demo && (
-              <a href={links.demo} className={`${styles.link} ${styles.demoLink}`} target="_blank" rel="noopener noreferrer">
+              <a href={normalizeUrl(links.demo)} className={`${styles.link} ${styles.demoLink}`} target="_blank" rel="noopener noreferrer">
                 🚀 Demo
               </a>
             )}
             {links.data && (
-              <a href={links.data} className={`${styles.link} ${styles.dataLink}`} target="_blank" rel="noopener noreferrer">
+              <a href={normalizeUrl(links.data)} className={`${styles.link} ${styles.dataLink}`} target="_blank" rel="noopener noreferrer">
                 📊 Data
               </a>
             )}
