@@ -1,12 +1,13 @@
 .projectCard {
   display: flex;
-  gap: var(--spacing-xl);
+  flex-wrap: wrap;
+  column-gap: var(--spacing-xl);
+  row-gap: var(--spacing-lg);
   padding: var(--spacing-xl);
   background: rgba(var(--color-bg-secondary-rgb), 0.8);
   backdrop-filter: blur(2px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  margin-bottom: var(--spacing-xl);
   transition: all var(--transition-normal);
   opacity: 0;
   transform: translateY(20px);
@@ -15,6 +16,8 @@
   z-index: 10;
   pointer-events: auto;
   min-height: 300px;
+  width: 100%;
+  align-items: stretch;
 }
 
 .projectCard:hover {
@@ -24,22 +27,32 @@
 }
 
 .projectMedia {
-  flex: 0 0 300px;
+  flex: 0 0 200px;
   height: 200px;
   width: 200px;
+  max-width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   border-radius: var(--radius-md);
+  flex-shrink: 0;
 }
 
 .mediaContent {
   width: 100%;
-  height: 200px;
-  object-fit: cover;
+  height: 100%;
   border-radius: var(--radius-md);
   transition: transform var(--transition-normal);
+}
+
+.mediaContentImage {
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.mediaContentVideo {
+  object-fit: cover;
 }
 
 .mediaContent:hover {
@@ -47,10 +60,11 @@
 }
 
 .projectContent {
-  flex: 1;
+  flex: 1 1 260px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+  min-width: 0;
 }
 
 .projectTitle {
@@ -118,6 +132,8 @@
   flex-wrap: wrap;
   gap: var(--spacing-md);
   margin-top: var(--spacing-md);
+  width: 100%;
+  justify-content: flex-start;
 }
 
 .link {
@@ -133,6 +149,7 @@
   border: none;
   cursor: pointer;
   font-family: inherit;
+  max-width: 100%;
 }
 
 .paperLink {
@@ -199,30 +216,43 @@
   }
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .projectCard {
     flex-direction: column;
+    align-items: stretch;
     gap: var(--spacing-lg);
     padding: var(--spacing-lg);
   }
-  
+
   .projectMedia {
-    flex: none;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    min-height: 180px;
+    max-height: 320px;
   }
-  
+
   .mediaContent {
-    height: 150px;
+    height: auto;
+    max-height: 320px;
   }
-  
-  .projectTitle {
-    font-size: 1.25rem;
+
+  .projectContent {
+    width: 100%;
+    align-items: stretch;
   }
-  
+}
+
+@media (max-width: 600px) {
+  .projectCard {
+    padding: var(--spacing-md);
+    gap: var(--spacing-md);
+  }
+
   .projectLinks {
     flex-direction: column;
   }
-  
+
   .link {
     justify-content: center;
   }

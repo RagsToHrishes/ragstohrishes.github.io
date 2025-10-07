@@ -58,11 +58,15 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
       return null;
     }
 
+    const baseMediaClass = `${styles.mediaContent} ${
+      mediaType === 'video' ? styles.mediaContentVideo : styles.mediaContentImage
+    }`;
+
     if (mediaType === 'video') {
       return (
         <div className={styles.projectMedia}>
           <video 
-            className={styles.mediaContent}
+            className={baseMediaClass}
             controls
             poster={posterUrl}
             preload="metadata"
@@ -80,7 +84,8 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
           <img 
             src={mediaUrl} 
             alt={title}
-            className={styles.mediaContent}
+            className={baseMediaClass}
+            loading="lazy"
           />
         </div>
       );

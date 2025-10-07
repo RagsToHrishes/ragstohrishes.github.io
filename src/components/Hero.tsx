@@ -22,7 +22,7 @@ const Hero: React.FC = () => {
     <section className={styles.hero}>
       <div className={styles.heroContent}>
         <h1 className={`${styles.heroTitle} animate-fade-in-up`}>
-          What's up, I'm <span className={styles.nameHighlight}>Hrish Leen</span>
+          What's up, I'm Hrish Leen
         </h1>
         
     

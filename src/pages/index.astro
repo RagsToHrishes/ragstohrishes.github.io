@@ -31,6 +31,19 @@ import ResearchProject from '../components/ResearchProject';
 							mediaUrl="/research/FLASH/trajectory.gif"
 							tags={[]}
 						/>
+						<ResearchProject 
+							client:load
+							title="Dexterous Learning for Dexterous Robot Grasping - A Survey"
+							description="A comprehensive survey of deep learning approaches for dexterous robotic grasping, emphasizing recent progress enabled by multi-modal models and data-driven techniques."
+							links={{
+								paper: "bit.ly/graspSurvey",
+							}}
+							authors={["Hrish Leen", "Kunal Aneja", "Chetan Reddy", "Priyadarshini Tamilselvan", "Nhi Nguyen", "Sri Siddarth Chakaravarthy", "Jeremy Collins", "Miroslav Bogdanovic", "Animesh Garg"]}
+							acceptedAt="Journal Preprint"
+							mediaType="image"
+							mediaUrl="/research/Survey/OverallFigure.png"
+							tags={[]}
+						/>
 
 						<div class="view-all-research">
 							<a href="/research" class="btn btn-primary">View All Research Projects</a>
@@ -47,15 +60,15 @@ import ResearchProject from '../components/ResearchProject';
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: var(--spacing-xl);
-    height: 60vh;
-	
+    height: 70vh;
+    max-height: 70vh;
     background: transparent;
     align-items: stretch;
     margin-top: var(--spacing-2xl);
-
-	width: 100vw;
+    width: 100vw;
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
+    overflow: hidden;
   }
 
   /* Shared transparent background for both panels */
@@ -64,25 +77,50 @@ import ResearchProject from '../components/ResearchProject';
     border-radius: var(--radius-lg);
     padding: var(--spacing-xl);
     backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .hero-col {
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .research-col {
+    gap: var(--spacing-xl);
+    min-height: 0;
     overflow: hidden;
   }
 
   .featured-research {
     background: transparent;
-    height: 100%;
     display: flex;
     flex-direction: column;
+    gap: var(--spacing-xl);
+    flex: 1;
+    min-height: 0;
   }
 
   .featured-research .container {
-    flex: 1;
     display: flex;
     flex-direction: column;
+    gap: var(--spacing-xl);
+    flex: 1;
+    min-height: 0;
   }
 
   .research-preview {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xl);
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-right: calc(var(--spacing-sm) + 4px);
     flex: 1;
-    overflow: auto;
+    min-height: 0;
   }
 
   .page-header {
@@ -112,7 +150,24 @@ import ResearchProject from '../components/ResearchProject';
     .landing-grid {
       grid-template-columns: 1fr;
       height: auto;
+      max-height: none;
+      overflow: visible;
       min-height: 80vh;
+    }
+
+    .grid-panel {
+      height: auto;
+      min-height: auto;
+      overflow: visible;
+    }
+
+    .hero-col,
+    .research-col {
+      overflow: visible;
+    }
+
+    .research-preview {
+      overflow-y: visible;
     }
   }
 </style>
