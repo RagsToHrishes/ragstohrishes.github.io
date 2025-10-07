@@ -7,8 +7,8 @@
   margin: 0;
   overflow: hidden;
   z-index: 20;
-  background: rgba(var(--color-bg-secondary-rgb), 0.8);
-  backdrop-filter: blur(2px);
+  /* background: rgba(var(--color-bg-secondary-rgb), 0.8);
+  backdrop-filter: blur(2px); */
   border-radius: var(--radius-lg);
   margin-bottom: var(--spacing-xl);
   margin-top: var(--spacing-lg);
