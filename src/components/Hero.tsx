@@ -39,17 +39,34 @@ const Hero: React.FC = () => {
         </div>
         
         <p className={`${styles.heroDescription} animate-fade-in-up`} style={{ animationDelay: '0.6s' }}>
-          
+           I’m a PhD student at the Georgia Institute of Technology, where I work with{" "}
+  <a href="https://animesh.garg.tech/" target="_blank" rel="noopener noreferrer">
+    Prof. Animesh Garg
+  </a>{" "}
+  at the{" "}
+  <a href="https://www.pair.toronto.edu/" target="_blank" rel="noopener noreferrer">
+    People, AI & Robots Lab
+  </a>{" "}
+  on robot learning. My research focuses on imbuing robots with physical intelligence, driven by a broader curiosity to understand the inner workings of the human brain. 
+  <br /><br />
+  Previously, I completed my undergraduate and master’s degrees at UC Berkeley, where I worked with{" "}
+  <a href="https://people.eecs.berkeley.edu/~svlevine/" target="_blank" rel="noopener noreferrer">
+    Prof. Sergey Levine
+  </a>{" "}
+  in the{" "}
+  <a href="https://rail.eecs.berkeley.edu/" target="_blank" rel="noopener noreferrer">
+    Robotic AI and Learning Lab
+  </a>.
         </p>
         
-        <div className={`${styles.heroButtons} animate-fade-in-up`} style={{ animationDelay: '0.8s' }}>
+        {/* <div className={`${styles.heroButtons} animate-fade-in-up`} style={{ animationDelay: '0.8s' }}>
           <a href="/research" className="btn btn-primary">
             View My Research
           </a>
           <a href="/contact" className="btn btn-secondary">
             Get In Touch
           </a>
-        </div>
+        </div> */}
       </div>
     </section>
   );

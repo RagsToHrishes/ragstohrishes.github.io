@@ -375,7 +375,7 @@ export default function PachinkoCanvas() {
         ctx.fillStyle = 'rgba(51,51,51,0.85)';
         ctx.fillRect(bucket.x, bucket.y, bucket.width, bucket.height);
         ctx.strokeStyle = '#666'; ctx.lineWidth = 2; ctx.strokeRect(bucket.x, bucket.y, bucket.width, bucket.height);
-        ctx.fillStyle = '#AAA'; ctx.font = `${Math.max(10, Math.min(14, Math.floor(bucket.width/6)))}px Inter, sans-serif`;
+        ctx.fillStyle = '#AAA'; ctx.font = `${Math.max(10, Math.min(14, Math.floor(bucket.width/6)))}px 'Roboto', sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText(`${bucket.balls.length}`, bucket.x + bucket.width/2, bucket.y + 16);
       }
