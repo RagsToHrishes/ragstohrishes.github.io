@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import styles from './PosterModal.module.css';
 
 interface PosterModalProps {
@@ -11,15 +12,23 @@ interface PosterModalProps {
 const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, title }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
   const isDraggingRef = useRef(false);
   const lastPointerPositionRef = useRef({ x: 0, y: 0 });
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const initialPinchDistanceRef = useRef<number | null>(null);
   const initialPinchScaleRef = useRef(1);
   const scaleRef = useRef(scale);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isMounted) {
+      return;
+    }
+
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose();
@@ -35,7 +44,7 @@ const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, t
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose]);
+  }, [isMounted, isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -202,10 +211,10 @@ const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, t
     initialPinchScaleRef.current = 1;
   };
 
-  if (!isOpen) return null;
+  if (!isMounted || !isOpen) return null;
 
-  return (
-    <div className={styles.modalOverlay} onClick={onClose}>
+  return createPortal(
+    <div className={styles.modalOverlay} onClick={onClose} role="dialog" aria-modal="true">
       <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHeader}>
           <h3 className={styles.modalTitle}>{title}</h3>
@@ -216,7 +225,6 @@ const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, t
           </button>
         </div>
         <div
-          ref={containerRef}
           className={styles.posterContainer}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
@@ -240,7 +248,8 @@ const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, t
           </p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
