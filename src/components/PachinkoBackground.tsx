@@ -38,7 +38,7 @@ export default function PachinkoCanvas() {
 
     type Ball = {
       x: number; y: number; vx: number; vy: number; r: number; color: string;
-      stationaryTime: number; isOnFloor: boolean; bucketIndex: number;
+      isOnFloor: boolean; bucketIndex: number; timeInBucket: number;
     };
     type Peg = { x: number; y: number; r: number };
     type Bucket = { x: number; y: number; width: number; height: number; balls: Ball[] };
@@ -57,6 +57,8 @@ export default function PachinkoCanvas() {
       funnelDepth: 160,// vertical depth of the funnel above the visible region
       renderFunnel: false, // not rendered by default
     };
+
+    let passiveSpawnTimer: number | null = null;
 
     const ballColors = ["#E94822", "#F2910A", "#EFD510", "#00D4AA", "#6C5CE7", "#FD79A8", "#C0C0C0", "#FFD700"];
 
@@ -135,7 +137,7 @@ export default function PachinkoCanvas() {
       const ball: Ball = {
         x, y, vx: (Math.random()-0.5)*140, vy: 0, r: BALL_RADIUS,
         color: color ?? ballColors[Math.floor(Math.random()*ballColors.length)],
-        stationaryTime: 0, isOnFloor: false, bucketIndex: -1,
+        isOnFloor: false, bucketIndex: -1, timeInBucket: 0,
       };
       state.balls.push(ball);
     }
@@ -151,10 +153,29 @@ export default function PachinkoCanvas() {
       }
     }
 
+    const STREAM_COLOR = "#C0C0C0";
+    const STREAM_INTERVAL_MS = 260;
+
+    function spawnStreamBall(batch = 1) {
+      spawnFromFunnel(batch, STREAM_COLOR);
+    }
+
+    function startPassiveStream() {
+      if (passiveSpawnTimer !== null) return;
+      spawnStreamBall();
+      passiveSpawnTimer = window.setInterval(() => spawnStreamBall(), STREAM_INTERVAL_MS);
+    }
+
+    function stopPassiveStream() {
+      if (passiveSpawnTimer === null) return;
+      window.clearInterval(passiveSpawnTimer);
+      passiveSpawnTimer = null;
+    }
+
     function spawnGaltonDemo() {
       state.balls.length = 0;
-      spawnFromFunnel(200, "#C0C0C0"); // many silver balls from funnel
-      spawnFromFunnel(1, "#FFD700");  // one gold ball
+      spawnFromFunnel(100, STREAM_COLOR);
+      spawnFromFunnel(1, "#FFD700");
     }
 
     // --- Collision helpers ---
@@ -285,7 +306,7 @@ export default function PachinkoCanvas() {
         if (ball.y < state.bucketY - ball.r) {
           for (const peg of state.pegs) resolveBallPeg(ball, peg);
           ball.vx *= airDrag; ball.vy *= airDrag;
-          ball.bucketIndex = -1; ball.isOnFloor = false;
+          ball.bucketIndex = -1; ball.isOnFloor = false; ball.timeInBucket = 0;
         }
       }
 
@@ -327,11 +348,14 @@ export default function PachinkoCanvas() {
       // cull long-sleeping balls
       for (let i = state.balls.length - 1; i >= 0; i--) {
         const b = state.balls[i];
-        const speed = Math.hypot(b.vx, b.vy);
-        if (speed < 5 && b.bucketIndex !== -1 && b.isOnFloor) {
-          b.stationaryTime += dt;
-          if (b.stationaryTime > 14) state.balls.splice(i, 1);
-        } else b.stationaryTime = 0;
+        if (b.bucketIndex !== -1) {
+          b.timeInBucket += dt;
+          if (b.timeInBucket >= 3) {
+            state.balls.splice(i, 1);
+          }
+        } else {
+          b.timeInBucket = 0;
+        }
       }
     }
 
@@ -385,7 +409,9 @@ export default function PachinkoCanvas() {
 
     function drawBalls() {
       for (const b of state.balls) {
-        const fade = b.bucketIndex !== -1 && b.stationaryTime > 4 ? Math.max(0.35, 1 - (b.stationaryTime - 4) / 10) : 1;
+        const fade = b.bucketIndex !== -1
+          ? Math.max(0, 1 - Math.max(0, b.timeInBucket - 1.5) / 1.5)
+          : 1;
         ctx.shadowColor = `rgba(0,0,0,${0.25*fade})`; ctx.shadowBlur = 8; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 3;
         ctx.fillStyle = hexToRGBA(b.color, fade);
         ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI*2); ctx.fill();
@@ -425,7 +451,9 @@ export default function PachinkoCanvas() {
 
     function onResize() { resize(); }
 
-    resize(); state.running = true; raf = requestAnimationFrame(loop);
+    resize();
+    startPassiveStream();
+    state.running = true; raf = requestAnimationFrame(loop);
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('resize', onResize);
 
@@ -434,6 +462,7 @@ export default function PachinkoCanvas() {
 
     return () => {
       state.running = false; cancelAnimationFrame(raf);
+      stopPassiveStream();
       canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('resize', onResize);
       canvas.removeEventListener('galtonDemo', handleGaltonDemo);
