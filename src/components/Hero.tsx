@@ -4,11 +4,10 @@ import styles from './Hero.module.css';
 const Hero: React.FC = () => {
   const [currentRole, setCurrentRole] = useState(0);
   const roles = [
-    'Full Stack Developer',
-    'UI/UX Designer',
-    'Problem Solver',
-    'Tech Enthusiast',
-    'Creative Thinker'
+    'Robot Learning',
+    'Reinforcement Learning',
+    'World Models',
+    'Dexterous Manipulation',
   ];
 
   useEffect(() => {
@@ -23,7 +22,7 @@ const Hero: React.FC = () => {
     <section className={styles.hero}>
       <div className={styles.heroContent}>
         <h1 className={`${styles.heroTitle} animate-fade-in-up`}>
-          Hi, I'm <span className={styles.nameHighlight}>Hrish Leen</span>
+          What's up, I'm <span className={styles.nameHighlight}>Hrish Leen</span>
         </h1>
         
     
@@ -35,13 +34,12 @@ const Hero: React.FC = () => {
          
         
         <div className={`${styles.heroRole} animate-fade-in-up`} style={{ animationDelay: '0.4s' }}>
-          <span className={styles.roleText}>I'm a </span>
+          <span className={styles.roleText}>I'm interested in</span>
           <span className={styles.roleRotating}>{roles[currentRole]}</span>
         </div>
         
         <p className={`${styles.heroDescription} animate-fade-in-up`} style={{ animationDelay: '0.6s' }}>
-          Passionate about creating beautiful, functional, and user-centered digital experiences.
-          I love turning complex problems into simple, elegant solutions.
+          
         </p>
         
         <div className={`${styles.heroButtons} animate-fade-in-up`} style={{ animationDelay: '0.8s' }}>

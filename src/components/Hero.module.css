@@ -63,8 +63,8 @@
 .roleText {
   color: #FFB366;
   font-weight: 600;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
-  background: rgba(0, 0, 0, 0.6);
+  /* text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9); */
+  /* background: rgba(0, 0, 0, 0.6); */
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
 }
@@ -74,8 +74,8 @@
   font-weight: 800;
   display: inline-block;
   animation: fadeInScale 0.5s ease-in-out;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
-  background: rgba(0, 0, 0, 0.6);
+  /* text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+  background: rgba(0, 0, 0, 0.6); */
   padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--radius-md);
 }
