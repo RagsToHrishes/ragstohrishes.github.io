@@ -194,7 +194,7 @@ import ResearchProject from '../components/ResearchProject';
   /* Short viewport heights: also remove inner scroll so cards expand */
   @media (max-height: 820px) {
     .landing-grid {
-      grid-template-columns: 1fr 1fr; /* keep two columns if width allows */
+      /* Do not force two columns on narrow screens */
       height: auto;
       max-height: none;
       overflow: visible;
@@ -223,6 +223,13 @@ import ResearchProject from '../components/ResearchProject';
       min-height: auto;
       padding-right: 0;
       flex: 0 1 auto;
+    }
+  }
+
+  /* On short heights but wide screens, keep two columns */
+  @media (max-height: 820px) and (min-width: 1025px) {
+    .landing-grid {
+      grid-template-columns: 1fr 1fr;
     }
   }
 </style>
