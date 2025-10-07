@@ -169,5 +169,127 @@ import ResearchProject from '../components/ResearchProject';
     .research-preview {
       overflow-y: visible;
     }
+
+    
   }
+
+  /* === 1) Keep the split layout fixed to viewport height === */
+.landing-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xl);
+
+  height: 70vh;         /* fixed height */
+  max-height: 70vh;
+  overflow: hidden;     /* outer clips; inner panels will scroll */
+
+  background: transparent;
+  align-items: stretch;
+  margin-top: var(--spacing-2xl);
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+}
+
+/* === 2) Panels fill the fixed height; allow an inner child to scroll === */
+.grid-panel {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  backdrop-filter: blur(6px);
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;   /* match the 70vh column */
+  min-height: 0;  /* CRITICAL for scroll containers inside flex */
+  overflow: hidden;
+}
+
+/* Hero column: let its content scroll */
+.hero-col {
+  overflow: hidden;
+  min-height: 0;
+}
+.hero-col > * {
+  min-height: 0;
+}
+.hero-col {
+  /* choose ONE scroll container inside hero; simplest is the panel itself */
+  overflow-y: auto;      /* smooth internal scroll */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Research column: make ONLY .research-preview scroll (not nested scrolls) */
+.research-col {
+  min-height: 0;
+  overflow: hidden;  /* the panel itself doesn't scroll */
+}
+
+.featured-research,
+.featured-research .container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  flex: 1 1 auto;
+  min-height: 0;     /* allow child to become the scroller */
+  overflow: hidden;
+}
+
+/* This is the single scroller in the right column */
+.research-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  flex: 1 1 auto;
+  min-height: 0;                 /* CRITICAL */
+  overflow-y: auto;              /* internal scroll here */
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: calc(var(--spacing-sm) + 4px); /* space for scrollbar */
+}
+
+
+@media (max-width: 1024px) {
+  .landing-grid {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .grid-panel {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  .hero-col,
+  .research-col,
+  .research-preview {
+    overflow: visible;
+    min-height: auto;
+  }
+}
+
+
+/* the fixed-height container is outside; this is the single scroller */
+.research-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;     /* scrolling happens here */
+  overflow-x: hidden;
+}
+
+/* parents must not trap height */
+.featured-research,
+.featured-research .container {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+
+
+
 </style>

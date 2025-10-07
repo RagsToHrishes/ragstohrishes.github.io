@@ -1,30 +1,76 @@
+
+/* === 3) Cards: allow vertical growth + no overflow from children === */
 .projectCard {
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: var(--spacing-xl);
-  row-gap: var(--spacing-lg);
-  padding: var(--spacing-xl);
-  background: rgba(var(--color-bg-secondary-rgb), 0.8);
-  backdrop-filter: blur(2px);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  transition: all var(--transition-normal);
-  opacity: 0;
-  transform: translateY(20px);
-  animation: fadeInUp 0.6s ease-out forwards;
-  position: relative;
-  z-index: 10;
-  pointer-events: auto;
-  min-height: 300px;
-  width: 100%;
-  align-items: stretch;
+   display: flex;
+   flex-wrap: wrap;
+   column-gap: var(--spacing-xl);
+   row-gap: var(--spacing-lg);
+   padding: var(--spacing-xl);
+   /* 🔒 Background lives on the element so height changes are visible */
+   background: rgba(var(--color-bg-secondary-rgb), 0.8);
+   backdrop-filter: blur(2px);
+   border: 1px solid var(--color-border);
+   border-radius: var(--radius-lg);
+   transition: all var(--transition-normal);
+   opacity: 0;
+   transform: translateY(20px);
+   animation: fadeInUp 0.6s ease-out forwards;
+
+   position: relative;         /* keep for hover + focus states */
+   z-index: 0;                 /* don’t stack above neighbors */
+   pointer-events: auto;
+
+   width: 100%;
+   height: auto;          /* grow with content */
+   min-height: 300px;
+   align-items: flex-start;
+   align-content: flex-start;
+   box-sizing: border-box;
+   overflow: visible;      /* never clip growing children */
 }
 
+/* Let card children wrap/shrink instead of spilling horizontally */
+.projectCard > * {
+  flex: 1 1 260px;   /* adjust base width as you like */
+  min-width: 0;      /* CRITICAL to allow text/button shrink in flex */
+  max-width: 100%;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.projectCard:hover { border-color: var(--color-accent); }
+
+/* Text/buttons never force overflow */
+.projectCard p,
+.projectCard .text,
+.projectCard .title {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.projectLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-md);
+  width: 100%;
+  justify-content: flex-start;
+}
+.link {
+  white-space: normal;
+  max-width: 100%;
+}
+
+/* keep your lift + shadow on hover */
 .projectCard:hover {
   transform: translateY(-4px);
-  border-color: var(--color-accent);
   box-shadow: var(--shadow-lg);
 }
+
+/* make the background border react on hover */
+.projectCard:hover::before {
+  border-color: var(--color-accent);
+}
+
 
 .projectMedia {
   flex: 0 0 200px;
@@ -80,7 +126,6 @@
   line-height: 1.6;
   font-size: 0.8rem;
   margin: 0;
-  flex: 1;
   font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
 }
