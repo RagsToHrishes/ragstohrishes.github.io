@@ -27,7 +27,7 @@ const Hero: React.FC = () => {
         
     
         <img 
-          src="/images/selfie.jpeg" 
+          src="/images/selfie.jpg" 
           alt="Hrish Leen" 
           className={styles.profileImage}
         />
@@ -35,6 +35,7 @@ const Hero: React.FC = () => {
         
         <div className={`${styles.heroRole} animate-fade-in-up`} style={{ animationDelay: '0.4s' }}>
           <span className={styles.roleText}>I'm interested in</span>
+          <br />
           <span className={styles.roleRotating}>{roles[currentRole]}</span>
         </div>
         

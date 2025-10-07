@@ -149,6 +149,13 @@
   color: var(--color-text-muted);
 }
 
+/* Highlight for tokens like Oral, Spotlight, Award */
+.venueHighlight {
+  color: #ffffff;
+  font-weight: 800;
+  font-style: italic;
+}
+
 .projectTags {
   display: flex;
   flex-wrap: wrap;

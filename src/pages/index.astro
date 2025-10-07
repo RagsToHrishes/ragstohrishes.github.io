@@ -56,9 +56,10 @@ import ResearchProject from '../components/ResearchProject';
 </Layout>
 
 <style>
+  /* Base: two-column split with fixed viewport height */
   .landing-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 0.4fr 1fr;
     gap: var(--spacing-xl);
     height: 70vh;
     max-height: 70vh;
@@ -68,31 +69,34 @@ import ResearchProject from '../components/ResearchProject';
     width: 100vw;
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
-    overflow: hidden;
+    overflow: hidden; /* inner panels provide scroll on desktop */
   }
 
-  /* Shared transparent background for both panels */
+  /* Shared panel styling */
   .grid-panel {
-    background: rgba(0, 0, 0, 0.2); /* 50% opaque */
+    background: rgba(0, 0, 0, 0.2);
     border-radius: var(--radius-lg);
     padding: var(--spacing-xl);
     backdrop-filter: blur(6px);
     display: flex;
     flex-direction: column;
     height: 100%;
-    min-height: 0;
+    min-height: 0; /* allow inner scrollers */
     overflow: hidden;
   }
 
+  /* Hero column scrolls on desktop */
   .hero-col {
     overflow-y: auto;
     min-height: 0;
+    -webkit-overflow-scrolling: touch;
   }
 
+  /* Research column: only inner list scrolls on desktop */
   .research-col {
     gap: var(--spacing-xl);
     min-height: 0;
-    overflow: hidden;
+    overflow: hidden; /* panel itself doesn't scroll */
   }
 
   .featured-research {
@@ -100,27 +104,31 @@ import ResearchProject from '../components/ResearchProject';
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xl);
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow: hidden;
   }
 
   .featured-research .container {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xl);
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow: hidden;
   }
 
+  /* List of research cards: single scroller on desktop */
   .research-preview {
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xl);
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding-right: calc(var(--spacing-sm) + 4px);
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-right: calc(var(--spacing-sm) + 4px);
   }
 
   .page-header {
@@ -146,13 +154,50 @@ import ResearchProject from '../components/ResearchProject';
     margin-top: var(--spacing-2xl);
   }
 
+  /* Mobile/tablet: stack, no inner scroll, cards push naturally */
   @media (max-width: 1024px) {
     .landing-grid {
       grid-template-columns: 1fr;
       height: auto;
       max-height: none;
       overflow: visible;
-      min-height: 80vh;
+    }
+
+    .grid-panel {
+      height: auto;
+      min-height: auto;
+      overflow: visible;
+      /* Reduce padding on small viewports to fit content */
+      padding: var(--spacing-lg);
+    }
+
+    .hero-col,
+    .research-col {
+      overflow: visible;
+    }
+
+    .featured-research,
+    .featured-research .container {
+      overflow: visible;
+      min-height: auto;
+      flex: 0 1 auto;
+    }
+
+    .research-preview {
+      overflow: visible; /* allow cards to define height */
+      min-height: auto;
+      padding-right: 0;
+      flex: 0 1 auto;
+    }
+  }
+
+  /* Short viewport heights: also remove inner scroll so cards expand */
+  @media (max-height: 820px) {
+    .landing-grid {
+      grid-template-columns: 1fr 1fr; /* keep two columns if width allows */
+      height: auto;
+      max-height: none;
+      overflow: visible;
     }
 
     .grid-panel {
@@ -166,130 +211,18 @@ import ResearchProject from '../components/ResearchProject';
       overflow: visible;
     }
 
-    .research-preview {
-      overflow-y: visible;
+    .featured-research,
+    .featured-research .container {
+      overflow: visible;
+      min-height: auto;
+      flex: 0 1 auto;
     }
 
-    
+    .research-preview {
+      overflow: visible;
+      min-height: auto;
+      padding-right: 0;
+      flex: 0 1 auto;
+    }
   }
-
-  /* === 1) Keep the split layout fixed to viewport height === */
-.landing-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-xl);
-
-  height: 70vh;         /* fixed height */
-  max-height: 70vh;
-  overflow: hidden;     /* outer clips; inner panels will scroll */
-
-  background: transparent;
-  align-items: stretch;
-  margin-top: var(--spacing-2xl);
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
-}
-
-/* === 2) Panels fill the fixed height; allow an inner child to scroll === */
-.grid-panel {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
-  backdrop-filter: blur(6px);
-
-  display: flex;
-  flex-direction: column;
-  height: 100%;   /* match the 70vh column */
-  min-height: 0;  /* CRITICAL for scroll containers inside flex */
-  overflow: hidden;
-}
-
-/* Hero column: let its content scroll */
-.hero-col {
-  overflow: hidden;
-  min-height: 0;
-}
-.hero-col > * {
-  min-height: 0;
-}
-.hero-col {
-  /* choose ONE scroll container inside hero; simplest is the panel itself */
-  overflow-y: auto;      /* smooth internal scroll */
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Research column: make ONLY .research-preview scroll (not nested scrolls) */
-.research-col {
-  min-height: 0;
-  overflow: hidden;  /* the panel itself doesn't scroll */
-}
-
-.featured-research,
-.featured-research .container {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
-  flex: 1 1 auto;
-  min-height: 0;     /* allow child to become the scroller */
-  overflow: hidden;
-}
-
-/* This is the single scroller in the right column */
-.research-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
-  flex: 1 1 auto;
-  min-height: 0;                 /* CRITICAL */
-  overflow-y: auto;              /* internal scroll here */
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  padding-right: calc(var(--spacing-sm) + 4px); /* space for scrollbar */
-}
-
-
-@media (max-width: 1024px) {
-  .landing-grid {
-    grid-template-columns: 1fr;
-    height: auto;
-    max-height: none;
-    overflow: visible;
-  }
-  .grid-panel {
-    height: auto;
-    min-height: auto;
-    overflow: visible;
-  }
-  .hero-col,
-  .research-col,
-  .research-preview {
-    overflow: visible;
-    min-height: auto;
-  }
-}
-
-
-/* the fixed-height container is outside; this is the single scroller */
-.research-preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xl);
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;     /* scrolling happens here */
-  overflow-x: hidden;
-}
-
-/* parents must not trap height */
-.featured-research,
-.featured-research .container {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: visible;
-}
-
-
-
-
 </style>

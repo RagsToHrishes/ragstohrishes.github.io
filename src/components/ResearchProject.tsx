@@ -16,7 +16,7 @@ interface ResearchProjectProps {
     website?: string;
   };
   authors?: string | string[];
-  acceptedAt?: string;
+  acceptedAt?: string | string[]; // supports single or multiple venues
   tags: string[];
 }
 
@@ -53,6 +53,43 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
   };
 
   const parsedAuthors = parseAuthors(authors);
+
+  const parseVenues = (value?: string | string[]) => {
+    if (!value) return [] as string[];
+    if (Array.isArray(value)) {
+      return value.map((v) => v.trim()).filter(Boolean);
+    }
+    const v = value.trim();
+    return v ? [v] : [];
+  };
+
+  const highlightVenueTokens = (text: string) => {
+    // Highlight specific words: Oral, Spotlight, Award (case-insensitive, word boundaries)
+    const regex = /(\bOral\b|\bSpotlight\b|\bAward\b)/gi;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      const [matched] = match;
+      const start = match.index;
+      const end = start + matched.length;
+      if (start > lastIndex) {
+        parts.push(text.slice(lastIndex, start));
+      }
+      parts.push(
+        <span key={`${start}-${end}`} className={styles.venueHighlight}>
+          {matched}
+        </span>
+      );
+      lastIndex = end;
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+    return parts;
+  };
+
+  const parsedVenues = parseVenues(acceptedAt);
 
   const renderMedia = () => {
     if (!mediaUrl || !mediaType) {
@@ -120,10 +157,14 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
             </p>
           )}
 
-          {acceptedAt && (
-            <p className={styles.projectVenue}>
-              <em>{acceptedAt}</em>
-            </p>
+          {parsedVenues.length > 0 && (
+            <div>
+              {parsedVenues.map((venue, idx) => (
+                <p key={`venue-${idx}`} className={styles.projectVenue}>
+                  <em>{highlightVenueTokens(venue)}</em>
+                </p>
+              ))}
+            </div>
           )}
           
           <p className={styles.projectDescription}>{description}</p>
