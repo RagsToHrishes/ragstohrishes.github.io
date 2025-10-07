@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import styles from './PosterModal.module.css';
 
 interface PosterModalProps {
   isOpen: boolean;

@@ -5,8 +5,8 @@ import styles from './ResearchProject.module.css';
 interface ResearchProjectProps {
   title: string;
   description: string;
-  mediaUrl: string;
-  mediaType: 'image' | 'video';
+  mediaUrl?: string;
+  mediaType?: 'image' | 'video';
   posterUrl?: string;
   links: {
     paper?: string;
@@ -28,28 +28,42 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
 }) => {
   const [isPosterModalOpen, setIsPosterModalOpen] = useState(false);
 
+  const renderMedia = () => {
+    if (!mediaUrl || !mediaType) {
+      return null;
+    }
+
+    if (mediaType === 'video') {
+      return (
+        <div className={styles.projectMedia}>
+          <video 
+            className={styles.mediaContent}
+            controls
+            poster={posterUrl}
+            preload="metadata"
+          >
+            <source src={mediaUrl} type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      );
+    }
+
+    return (
+      <div className={styles.projectMedia}>
+        <img 
+          src={mediaUrl} 
+          alt={title}
+          className={styles.mediaContent}
+        />
+      </div>
+    );
+  };
+
   return (
     <>
       <div className={styles.projectCard}>
-        <div className={styles.projectMedia}>
-          {mediaType === 'video' ? (
-            <video 
-              className={styles.mediaContent}
-              controls
-              poster={posterUrl}
-              preload="metadata"
-            >
-              <source src={mediaUrl} type="video/mp4" />
-              Your browser does not support the video tag.
-            </video>
-          ) : (
-            <img 
-              src={mediaUrl} 
-              alt={title}
-              className={styles.mediaContent}
-            />
-          )}
-        </div>
+        {renderMedia()}
         
         <div className={styles.projectContent}>
           <h3 className={styles.projectTitle}>{title}</h3>

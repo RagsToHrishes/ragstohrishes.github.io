@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 
-// Canvas-only interactive Pachinko with more buckets, stable stacking, counters, random deflections, and a Galton Demo button
+// Canvas-only interactive Pachinko with air + bucket ball-ball collisions,
+// spatial hashing for performance, stable stacking, counters, random deflections,
+// and a Galton Demo custom event.
 export default function PachinkoCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -19,12 +21,19 @@ export default function PachinkoCanvas() {
     const PEG_BOUNCE = 0.7;
     const MAX_DT = 1 / 30;
     const SUBSTEPS = 2; // split dt for stability when crowded
-    const MAX_PAIR_ITERS = 3; // a bit more relaxation passes in bucket
-    const PAIR_PUSH = 0.6; // stronger separation to avoid sinking
-    const FLOOR_SLOP = 0.3; // resting tolerance
+
+    // Pair-collision solver params
+    const MAX_PAIR_ITERS_BUCKET = 3; // relaxation passes in bucket
+    const MAX_PAIR_ITERS_AIR = 1;    // fewer iterations while airborne for perf
+    const PAIR_PUSH_BUCKET = 0.6;    // stronger separation to avoid sinking
+    const PAIR_PUSH_AIR = 0.45;      // a bit softer in air to reduce jitter
+    const FLOOR_SLOP = 0.3;          // resting tolerance
 
     const BALL_RADIUS = 7;
     const PEG_RADIUS = 6;
+
+    // Spatial hash (broadphase). Cell ~ few radii.
+    const GRID_CELL = BALL_RADIUS * 3;
 
     type Ball = {
       x: number; y: number; vx: number; vy: number; r: number; color: string;
@@ -134,12 +143,12 @@ export default function PachinkoCanvas() {
       }
     }
 
-    function resolveBallBall(a: Ball, b: Ball) {
+    function resolveBallBall(a: Ball, b: Ball, push: number) {
       const dx = b.x - a.x, dy = b.y - a.y;
       const dist = Math.hypot(dx, dy), minDist = a.r + b.r;
       if (dist > 0 && dist < minDist) {
         const nx = dx / dist, ny = dy / dist;
-        const overlap = (minDist - dist) * PAIR_PUSH;
+        const overlap = (minDist - dist) * push;
         a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
         b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
         const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
@@ -152,12 +161,53 @@ export default function PachinkoCanvas() {
       }
     }
 
+    // Spatial hash utilities
+    function cellCoord(x: number) { return Math.floor(x / GRID_CELL); }
+    function key(cx: number, cy: number) { return `${cx},${cy}`; }
+
+    function collideAirWithGrid() {
+      // Build grid
+      const grid = new Map<string, number[]>();
+      const balls = state.balls;
+      for (let i = 0; i < balls.length; i++) {
+        const b = balls[i];
+        if (b.y >= state.bucketY - b.r) continue; // only airborne
+        const cx = cellCoord(b.x), cy = cellCoord(b.y);
+        const k = key(cx, cy);
+        const arr = grid.get(k);
+        if (arr) arr.push(i); else grid.set(k, [i]);
+      }
+
+      // For each ball, test neighbors in 3x3 cells
+      for (let iter = 0; iter < MAX_PAIR_ITERS_AIR; iter++) {
+        for (let i = 0; i < balls.length; i++) {
+          const a = balls[i];
+          if (a.y >= state.bucketY - a.r) continue;
+          const cx = cellCoord(a.x), cy = cellCoord(a.y);
+          for (let oy = -1; oy <= 1; oy++) {
+            for (let ox = -1; ox <= 1; ox++) {
+              const arr = grid.get(key(cx + ox, cy + oy));
+              if (!arr) continue;
+              for (const j of arr) {
+                if (j <= i) continue; // avoid double-processing
+                const b = balls[j];
+                // quick AABB reject before circle test
+                if (Math.abs(a.x - b.x) > a.r + b.r || Math.abs(a.y - b.y) > a.r + b.r) continue;
+                resolveBallBall(a, b, PAIR_PUSH_AIR);
+              }
+            }
+          }
+        }
+      }
+    }
+
     function integrate(dt: number) {
       const airDrag = powDrag(AIR_DRAG, dt);
       const groundDrag = powDrag(GROUND_DRAG, dt);
 
       for (const b of state.buckets) b.balls.length = 0;
 
+      // Integrate and handle walls + pegs
       for (const ball of state.balls) {
         // gravity
         ball.vy += GRAVITY * dt;
@@ -169,12 +219,20 @@ export default function PachinkoCanvas() {
         if (ball.x - ball.r < 0) { ball.x = ball.r; ball.vx = -ball.vx * BOUNCE; }
         if (ball.x + ball.r > state.w) { ball.x = state.w - ball.r; ball.vx = -ball.vx * BOUNCE; }
 
-        // peg region vs bucket region
+        // peg collisions while above bucket line
         if (ball.y < state.bucketY - ball.r) {
           for (const peg of state.pegs) resolveBallPeg(ball, peg);
           ball.vx *= airDrag; ball.vy *= airDrag;
           ball.bucketIndex = -1; ball.isOnFloor = false;
-        } else {
+        }
+      }
+
+      // --- NEW: Airborne ball-ball collisions via spatial hash ---
+      collideAirWithGrid();
+
+      // Now bucket region constraints + per-bucket classification
+      for (const ball of state.balls) {
+        if (ball.y >= state.bucketY - ball.r) {
           const idx = getBucketIndexForX(ball.x);
           const bucket = state.buckets[idx];
           const left = bucket.x + ball.r, right = bucket.x + bucket.width - ball.r;
@@ -197,9 +255,9 @@ export default function PachinkoCanvas() {
       for (const bucket of state.buckets) {
         bucket.balls.sort((a,b) => a.y - b.y);
         const arr = bucket.balls;
-        for (let it = 0; it < MAX_PAIR_ITERS; it++) {
+        for (let it = 0; it < MAX_PAIR_ITERS_BUCKET; it++) {
           for (let i = 0; i < arr.length; i++) {
-            for (let j = i+1; j < arr.length; j++) resolveBallBall(arr[i], arr[j]);
+            for (let j = i+1; j < arr.length; j++) resolveBallBall(arr[i], arr[j], PAIR_PUSH_BUCKET);
           }
         }
       }
@@ -258,16 +316,11 @@ export default function PachinkoCanvas() {
       }
     }
 
-    function drawGaltonButton() {
-      // Button is now rendered as HTML, so we don't need to draw it on canvas
-    }
-
     function drawFrame() {
       ctx.clearRect(0, 0, state.w, state.h);
       drawBackground();
       drawPegs();
       drawBalls();
-      drawGaltonButton();
     }
 
     let prev = performance.now() / 1000;
@@ -293,10 +346,8 @@ export default function PachinkoCanvas() {
     resize(); state.running = true; raf = requestAnimationFrame(loop);
     canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('resize', onResize);
-    
-    const handleGaltonDemo = () => {
-      spawnGaltonDemo();
-    };
+
+    const handleGaltonDemo = () => { spawnGaltonDemo(); };
     canvas.addEventListener('galtonDemo', handleGaltonDemo);
 
     return () => {
@@ -312,17 +363,17 @@ export default function PachinkoCanvas() {
     <>
       <canvas
         ref={canvasRef}
-      style={{ 
-        width: '100vw', 
-        height: 'calc(100vh + 200px)', 
-        display: 'block', 
-        background: '#000', 
-        cursor: 'crosshair',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        zIndex: 1
-      }}
+        style={{ 
+          width: '100vw', 
+          height: 'calc(100vh + 200px)', 
+          display: 'block', 
+          background: '#000', 
+          cursor: 'crosshair',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          zIndex: 1
+        }}
         aria-hidden="true"
       />
     </>
