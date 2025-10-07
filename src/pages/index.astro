@@ -1,0 +1,89 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Hero from '../components/Hero';
+import ResearchProject from '../components/ResearchProject';
+---
+
+<Layout title="Hrish Leen - Personal Portfolio" description="Personal website and portfolio showcasing research, skills, and experience" usePachinko={true}>
+	<Hero client:load />
+	
+	<section class="featured-research">
+		<div class="container">
+			<div class="page-header">
+				<h2 class="text-gradient">Featured Research</h2>
+				<p class="text-secondary">Here are some of my latest research projects</p>
+			</div>
+			
+			<div class="research-preview">
+				<ResearchProject 
+					client:load
+					title="Machine Learning for Predictive Analytics"
+					description="This research explores the application of deep learning techniques to predict complex patterns in large datasets. We developed a novel neural network architecture that achieves state-of-the-art performance on benchmark datasets while maintaining computational efficiency."
+					mediaUrl="/research/ml-prediction-demo.mp4"
+					mediaType="video"
+					posterUrl="/research/ml-poster.jpg"
+					links={{
+						paper: "https://arxiv.org/abs/example",
+						github: "https://github.com/yourusername/ml-predictive",
+						demo: "https://demo.example.com",
+						data: "https://dataset.example.com"
+					}}
+					tags={["Machine Learning", "Deep Learning", "Python", "TensorFlow", "Data Science"]}
+				/>
+				
+				<div class="view-all-research">
+					<a href="/research" class="btn btn-primary">
+						View All Research Projects
+					</a>
+				</div>
+			</div>
+		</div>
+	</section>
+</Layout>
+
+<style>
+	.featured-research {
+		padding: var(--spacing-3xl) 0;
+		background: rgba(var(--color-bg-secondary-rgb), 0.8);
+		backdrop-filter: blur(3px);
+		border-radius: var(--radius-lg);
+		margin-bottom: var(--spacing-xl);
+		position: relative;
+		z-index: 10;
+		pointer-events: auto;
+		min-height: 60vh;
+		margin-top: var(--spacing-2xl);
+	}
+	
+	.page-header {
+		text-align: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.page-header h2 {
+		margin-bottom: var(--spacing-md);
+		color: #FFB366;
+		font-weight: 900;
+		text-shadow: 0 6px 12px rgba(0, 0, 0, 1), 0 0 20px rgba(255, 179, 102, 0.5);
+		background: rgba(0, 0, 0, 0.8);
+		padding: var(--spacing-md);
+		border-radius: var(--radius-md);
+		border: 2px solid rgba(255, 179, 102, 0.3);
+	}
+	
+	.page-header p {
+		color: #FFB366;
+		font-weight: 600;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+	}
+	
+	.research-preview {
+		max-width: 1000px;
+		margin: 0 auto;
+	}
+	
+	.view-all-research {
+		text-align: center;
+		margin-top: var(--spacing-2xl);
+	}
+</style>

@@ -1,0 +1,296 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Resume - Your Name" description="Download my resume and view my professional experience">
+	<div class="page-header">
+		<h1 class="text-gradient">Resume</h1>
+		<p class="text-secondary">My professional experience and skills</p>
+	</div>
+	
+	<div class="resume-content">
+		<div class="resume-actions">
+			<a href="/resume.pdf" class="btn btn-primary" download>
+				📄 Download PDF
+			</a>
+			<a href="/contact" class="btn btn-secondary">
+				📧 Contact Me
+			</a>
+		</div>
+		
+		<div class="resume-sections">
+			<section class="resume-section">
+				<h2>Experience</h2>
+				<div class="timeline">
+					<div class="timeline-item">
+						<div class="timeline-marker"></div>
+						<div class="timeline-content">
+							<h3>Senior Developer</h3>
+							<h4>Company Name • 2022 - Present</h4>
+							<p>Leading development of web applications using modern technologies. Collaborating with cross-functional teams to deliver high-quality software solutions.</p>
+							<ul>
+								<li>Built scalable web applications using React and Node.js</li>
+								<li>Implemented CI/CD pipelines and automated testing</li>
+								<li>Mentored junior developers and conducted code reviews</li>
+							</ul>
+						</div>
+					</div>
+					
+					<div class="timeline-item">
+						<div class="timeline-marker"></div>
+						<div class="timeline-content">
+							<h3>Full Stack Developer</h3>
+							<h4>Previous Company • 2020 - 2022</h4>
+							<p>Developed and maintained web applications, working closely with design and product teams to implement user-facing features.</p>
+							<ul>
+								<li>Created responsive web interfaces with React and Vue.js</li>
+								<li>Built RESTful APIs using Python and Node.js</li>
+								<li>Optimized database queries and improved application performance</li>
+							</ul>
+						</div>
+					</div>
+					
+					<div class="timeline-item">
+						<div class="timeline-marker"></div>
+						<div class="timeline-content">
+							<h3>Junior Developer</h3>
+							<h4>Startup Company • 2019 - 2020</h4>
+							<p>Started my professional journey as a junior developer, learning modern web development practices and contributing to various projects.</p>
+							<ul>
+								<li>Developed frontend components using HTML, CSS, and JavaScript</li>
+								<li>Learned version control with Git and collaborative development</li>
+								<li>Participated in agile development processes</li>
+							</ul>
+						</div>
+					</div>
+				</div>
+			</section>
+			
+			<section class="resume-section">
+				<h2>Education</h2>
+				<div class="education-item">
+					<h3>Bachelor of Science in Computer Science</h3>
+					<h4>University Name • 2015 - 2019</h4>
+					<p>Graduated with honors, focusing on software engineering, algorithms, and data structures.</p>
+				</div>
+			</section>
+			
+			<section class="resume-section">
+				<h2>Skills</h2>
+				<div class="skills-grid">
+					<div class="skill-category">
+						<h3>Frontend</h3>
+						<div class="skill-tags">
+							<span class="skill-tag">React</span>
+							<span class="skill-tag">Vue.js</span>
+							<span class="skill-tag">TypeScript</span>
+							<span class="skill-tag">CSS3</span>
+							<span class="skill-tag">Sass</span>
+						</div>
+					</div>
+					
+					<div class="skill-category">
+						<h3>Backend</h3>
+						<div class="skill-tags">
+							<span class="skill-tag">Node.js</span>
+							<span class="skill-tag">Python</span>
+							<span class="skill-tag">Express</span>
+							<span class="skill-tag">Django</span>
+							<span class="skill-tag">REST APIs</span>
+						</div>
+					</div>
+					
+					<div class="skill-category">
+						<h3>Database</h3>
+						<div class="skill-tags">
+							<span class="skill-tag">PostgreSQL</span>
+							<span class="skill-tag">MongoDB</span>
+							<span class="skill-tag">Redis</span>
+							<span class="skill-tag">SQL</span>
+						</div>
+					</div>
+					
+					<div class="skill-category">
+						<h3>Tools & Others</h3>
+						<div class="skill-tags">
+							<span class="skill-tag">Git</span>
+							<span class="skill-tag">Docker</span>
+							<span class="skill-tag">AWS</span>
+							<span class="skill-tag">Figma</span>
+							<span class="skill-tag">Linux</span>
+						</div>
+					</div>
+				</div>
+			</section>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.page-header {
+		text-align: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.page-header h1 {
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.resume-content {
+		max-width: 800px;
+		margin: 0 auto;
+	}
+	
+	.resume-actions {
+		display: flex;
+		gap: var(--spacing-lg);
+		justify-content: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.resume-sections {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-3xl);
+	}
+	
+	.resume-section h2 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xl);
+		border-bottom: 2px solid var(--color-accent);
+		padding-bottom: var(--spacing-sm);
+	}
+	
+	.timeline {
+		position: relative;
+		padding-left: var(--spacing-lg);
+	}
+	
+	.timeline::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		background: var(--color-border);
+	}
+	
+	.timeline-item {
+		position: relative;
+		margin-bottom: var(--spacing-2xl);
+		padding-left: var(--spacing-xl);
+	}
+	
+	.timeline-marker {
+		position: absolute;
+		left: -6px;
+		top: 6px;
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: var(--color-accent);
+		border: 3px solid var(--color-bg-primary);
+	}
+	
+	.timeline-content h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xs);
+	}
+	
+	.timeline-content h4 {
+		color: var(--color-accent);
+		font-weight: 500;
+		margin-bottom: var(--spacing-sm);
+	}
+	
+	.timeline-content p {
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.timeline-content ul {
+		padding-left: var(--spacing-lg);
+	}
+	
+	.timeline-content li {
+		margin-bottom: var(--spacing-xs);
+		color: var(--color-text-secondary);
+	}
+	
+	.education-item {
+		padding: var(--spacing-xl);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+	
+	.education-item h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xs);
+	}
+	
+	.education-item h4 {
+		color: var(--color-accent);
+		font-weight: 500;
+		margin-bottom: var(--spacing-sm);
+	}
+	
+	.skills-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: var(--spacing-xl);
+	}
+	
+	.skill-category {
+		padding: var(--spacing-lg);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+	
+	.skill-category h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-md);
+		font-size: 1.125rem;
+	}
+	
+	.skill-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--spacing-sm);
+	}
+	
+	.skill-tag {
+		background: var(--color-bg-tertiary);
+		color: var(--color-text-primary);
+		padding: var(--spacing-xs) var(--spacing-sm);
+		border-radius: var(--radius-sm);
+		font-size: 0.875rem;
+		font-weight: 500;
+		border: 1px solid var(--color-border);
+	}
+	
+	@media (max-width: 768px) {
+		.resume-actions {
+			flex-direction: column;
+			align-items: center;
+		}
+		
+		.resume-actions .btn {
+			width: 100%;
+			max-width: 250px;
+		}
+		
+		.skills-grid {
+			grid-template-columns: 1fr;
+		}
+		
+		.timeline {
+			padding-left: var(--spacing-md);
+		}
+		
+		.timeline-item {
+			padding-left: var(--spacing-lg);
+		}
+	}
+</style>

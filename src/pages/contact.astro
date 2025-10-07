@@ -1,0 +1,337 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Contact - Your Name" description="Get in touch with me for collaborations, opportunities, or just to say hello">
+	<div class="page-header">
+		<h1 class="text-gradient">Get In Touch</h1>
+		<p class="text-secondary">I'd love to hear from you. Send me a message!</p>
+	</div>
+	
+	<div class="contact-content">
+		<div class="contact-grid">
+			<div class="contact-info">
+				<section class="contact-section">
+					<h2>Let's Connect</h2>
+					<p>
+						I'm always interested in new opportunities, collaborations, and interesting 
+						projects. Whether you have a question, want to work together, or just want 
+						to say hello, I'd love to hear from you!
+					</p>
+					
+					<div class="contact-methods">
+						<div class="contact-method">
+							<div class="contact-icon">📧</div>
+							<div class="contact-details">
+								<h3>Email</h3>
+								<p>your.email@example.com</p>
+								<a href="mailto:your.email@example.com" class="contact-link">Send Email</a>
+							</div>
+						</div>
+						
+						<div class="contact-method">
+							<div class="contact-icon">💼</div>
+							<div class="contact-details">
+								<h3>LinkedIn</h3>
+								<p>Connect with me professionally</p>
+								<a href="https://linkedin.com/in/yourprofile" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
+							</div>
+						</div>
+						
+						<div class="contact-method">
+							<div class="contact-icon">🐙</div>
+							<div class="contact-details">
+								<h3>GitHub</h3>
+								<p>Check out my code and projects</p>
+								<a href="https://github.com/yourusername" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
+							</div>
+						</div>
+						
+						<div class="contact-method">
+							<div class="contact-icon">🐦</div>
+							<div class="contact-details">
+								<h3>Twitter</h3>
+								<p>Follow me for updates and thoughts</p>
+								<a href="https://twitter.com/yourusername" class="contact-link" target="_blank" rel="noopener noreferrer">Follow Me</a>
+							</div>
+						</div>
+					</div>
+				</section>
+				
+				<section class="contact-section">
+					<h2>What I'm Looking For</h2>
+					<div class="opportunities">
+					<div class="opportunity-item">
+						<h3>🚀 New Research</h3>
+						<p>Exciting research projects and academic collaborations</p>
+					</div>
+						<div class="opportunity-item">
+							<h3>💼 Job Opportunities</h3>
+							<p>Full-time or freelance positions in web development</p>
+						</div>
+						<div class="opportunity-item">
+							<h3>🤝 Mentorship</h3>
+							<p>Helping junior developers grow and learn</p>
+						</div>
+						<div class="opportunity-item">
+							<h3>📚 Speaking</h3>
+							<p>Tech talks and workshops about web development</p>
+						</div>
+					</div>
+				</section>
+			</div>
+			
+			<div class="contact-form-container">
+				<div class="contact-form-card">
+					<h2>Send a Message</h2>
+					<form class="contact-form" action="#" method="POST">
+						<div class="form-group">
+							<label for="name">Name *</label>
+							<input type="text" id="name" name="name" required>
+						</div>
+						
+						<div class="form-group">
+							<label for="email">Email *</label>
+							<input type="email" id="email" name="email" required>
+						</div>
+						
+						<div class="form-group">
+							<label for="subject">Subject</label>
+							<input type="text" id="subject" name="subject">
+						</div>
+						
+						<div class="form-group">
+							<label for="message">Message *</label>
+							<textarea id="message" name="message" rows="6" required></textarea>
+						</div>
+						
+						<button type="submit" class="btn btn-primary form-submit">
+							Send Message
+						</button>
+					</form>
+					
+					<div class="form-note">
+						<p>
+							<small>
+								* Required fields. I'll get back to you as soon as possible, 
+								usually within 24 hours.
+							</small>
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.page-header {
+		text-align: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.page-header h1 {
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.contact-content {
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+	
+	.contact-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: var(--spacing-3xl);
+	}
+	
+	.contact-section {
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.contact-section h2 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-lg);
+		border-bottom: 2px solid var(--color-accent);
+		padding-bottom: var(--spacing-sm);
+	}
+	
+	.contact-section p {
+		margin-bottom: var(--spacing-lg);
+		line-height: 1.7;
+	}
+	
+	.contact-methods {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-lg);
+	}
+	
+	.contact-method {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--spacing-lg);
+		padding: var(--spacing-lg);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		transition: all var(--transition-normal);
+	}
+	
+	.contact-method:hover {
+		border-color: var(--color-accent);
+		transform: translateY(-2px);
+	}
+	
+	.contact-icon {
+		font-size: 2rem;
+		flex-shrink: 0;
+	}
+	
+	.contact-details h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xs);
+		font-size: 1.125rem;
+	}
+	
+	.contact-details p {
+		color: var(--color-text-secondary);
+		margin-bottom: var(--spacing-sm);
+		font-size: 0.875rem;
+	}
+	
+	.contact-link {
+		color: var(--color-accent);
+		text-decoration: none;
+		font-weight: 500;
+		font-size: 0.875rem;
+		transition: color var(--transition-fast);
+	}
+	
+	.contact-link:hover {
+		color: var(--color-accent-hover);
+	}
+	
+	.opportunities {
+		display: grid;
+		gap: var(--spacing-lg);
+	}
+	
+	.opportunity-item {
+		padding: var(--spacing-lg);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		transition: all var(--transition-normal);
+	}
+	
+	.opportunity-item:hover {
+		border-color: var(--color-accent);
+		transform: translateY(-2px);
+	}
+	
+	.opportunity-item h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-sm);
+		font-size: 1rem;
+	}
+	
+	.opportunity-item p {
+		color: var(--color-text-secondary);
+		margin: 0;
+		font-size: 0.875rem;
+	}
+	
+	.contact-form-container {
+		position: sticky;
+		top: var(--spacing-xl);
+	}
+	
+	.contact-form-card {
+		padding: var(--spacing-2xl);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-lg);
+	}
+	
+	.contact-form-card h2 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xl);
+		text-align: center;
+	}
+	
+	.form-group {
+		margin-bottom: var(--spacing-lg);
+	}
+	
+	.form-group label {
+		display: block;
+		color: var(--color-text-primary);
+		font-weight: 500;
+		margin-bottom: var(--spacing-sm);
+	}
+	
+	.form-group input,
+	.form-group textarea {
+		width: 100%;
+		padding: var(--spacing-md);
+		background: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-md);
+		color: var(--color-text-primary);
+		font-family: inherit;
+		font-size: 1rem;
+		transition: border-color var(--transition-fast);
+	}
+	
+	.form-group input:focus,
+	.form-group textarea:focus {
+		outline: none;
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+	
+	.form-group textarea {
+		resize: vertical;
+		min-height: 120px;
+	}
+	
+	.form-submit {
+		width: 100%;
+		padding: var(--spacing-lg);
+		font-size: 1rem;
+		font-weight: 600;
+		margin-top: var(--spacing-lg);
+	}
+	
+	.form-note {
+		margin-top: var(--spacing-lg);
+		text-align: center;
+	}
+	
+	.form-note p {
+		margin: 0;
+		color: var(--color-text-muted);
+	}
+	
+	@media (max-width: 768px) {
+		.contact-grid {
+			grid-template-columns: 1fr;
+			gap: var(--spacing-2xl);
+		}
+		
+		.contact-form-container {
+			position: static;
+		}
+		
+		.contact-form-card {
+			padding: var(--spacing-xl);
+		}
+		
+		.contact-method {
+			flex-direction: column;
+			text-align: center;
+		}
+	}
+</style>

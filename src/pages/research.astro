@@ -1,0 +1,75 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ResearchProject from '../components/ResearchProject';
+---
+
+<Layout title="Research - Your Name" description="Explore my latest research and academic work">
+	<div class="page-header">
+		<h1 class="text-gradient">My Research</h1>
+		<p class="text-secondary">Here are some of the research projects I've been working on</p>
+	</div>
+	
+	<div class="research-list">
+		<ResearchProject 
+			client:load
+			title="Machine Learning for Predictive Analytics"
+			description="This research explores the application of deep learning techniques to predict complex patterns in large datasets. We developed a novel neural network architecture that achieves state-of-the-art performance on benchmark datasets while maintaining computational efficiency."
+			mediaUrl="/research/ml-prediction-demo.mp4"
+			mediaType="video"
+			posterUrl="/research/ml-poster.jpg"
+			links={{
+				paper: "https://arxiv.org/abs/example",
+				github: "https://github.com/yourusername/ml-predictive",
+				demo: "https://demo.example.com",
+				data: "https://dataset.example.com"
+			}}
+			tags={["Machine Learning", "Deep Learning", "Python", "TensorFlow", "Data Science"]}
+		/>
+		
+		<ResearchProject 
+			client:load
+			title="Statistical Analysis of Climate Change Patterns"
+			description="A comprehensive statistical study analyzing climate change patterns over the past century. This research combines time series analysis, spatial statistics, and machine learning to identify significant trends and predict future climate scenarios."
+			mediaUrl="/research/climate-analysis.png"
+			mediaType="image"
+			posterUrl="/research/climate-poster.jpg"
+			links={{
+				paper: "https://journal.example.com/climate-analysis",
+				github: "https://github.com/yourusername/climate-analysis",
+				data: "https://climate-data.example.com"
+			}}
+			tags={["Statistics", "Climate Science", "R", "Time Series", "Data Visualization"]}
+		/>
+		
+		<ResearchProject 
+			client:load
+			title="Human-Computer Interaction in Virtual Reality"
+			description="An experimental study examining user interaction patterns in virtual reality environments. We conducted user studies with 200 participants to understand how people adapt to VR interfaces and developed guidelines for more intuitive VR design."
+			mediaUrl="/research/vr-interaction-demo.mp4"
+			mediaType="video"
+			posterUrl="/research/vr-poster.jpg"
+			links={{
+				paper: "https://hci-journal.example.com/vr-interaction",
+				github: "https://github.com/yourusername/vr-interaction",
+				demo: "https://vr-demo.example.com"
+			}}
+			tags={["Human-Computer Interaction", "Virtual Reality", "User Studies", "Unity", "UX Research"]}
+		/>
+	</div>
+</Layout>
+
+<style>
+	.page-header {
+		text-align: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.page-header h1 {
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.research-list {
+		max-width: 1000px;
+		margin: 0 auto;
+	}
+</style>

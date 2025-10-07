@@ -1,0 +1,302 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="About - Your Name" description="Learn more about my journey, skills, and what drives me">
+	<div class="page-header">
+		<h1 class="text-gradient">About Me</h1>
+		<p class="text-secondary">Get to know me better</p>
+	</div>
+	
+	<div class="about-content">
+		<div class="about-grid">
+			<div class="about-text">
+				<section class="about-section">
+					<h2>My Story</h2>
+					<p>
+						I'm a passionate full-stack developer with over 5 years of experience creating 
+						digital solutions that make a difference. My journey began with curiosity about 
+						how websites work, and it has evolved into a career dedicated to building 
+						innovative applications that solve real-world problems.
+					</p>
+					<p>
+						I believe in the power of technology to transform ideas into reality. Whether 
+						it's a simple website, a complex web application, or a mobile app, I approach 
+						each project with enthusiasm and attention to detail.
+					</p>
+				</section>
+				
+				<section class="about-section">
+					<h2>What I Do</h2>
+					<p>
+						I specialize in modern web development, focusing on creating user-centered 
+						experiences that are both beautiful and functional. My expertise spans across 
+						the entire development stack, from designing intuitive user interfaces to 
+						building robust backend systems.
+					</p>
+					<div class="expertise-grid">
+						<div class="expertise-item">
+							<div class="expertise-icon">🎨</div>
+							<h3>Frontend Development</h3>
+							<p>Creating responsive and interactive user interfaces using modern frameworks and tools.</p>
+						</div>
+						<div class="expertise-item">
+							<div class="expertise-icon">⚙️</div>
+							<h3>Backend Development</h3>
+							<p>Building scalable server-side applications and APIs that power modern web experiences.</p>
+						</div>
+						<div class="expertise-item">
+							<div class="expertise-icon">📱</div>
+							<h3>Mobile Development</h3>
+							<p>Developing cross-platform mobile applications that provide seamless user experiences.</p>
+						</div>
+						<div class="expertise-item">
+							<div class="expertise-icon">🔧</div>
+							<h3>DevOps & Deployment</h3>
+							<p>Setting up CI/CD pipelines and deploying applications to various cloud platforms.</p>
+						</div>
+					</div>
+				</section>
+				
+				<section class="about-section">
+					<h2>Beyond Code</h2>
+					<p>
+						When I'm not coding, you can find me exploring new technologies, contributing 
+						to open-source projects, or sharing knowledge with the developer community. 
+						I'm also passionate about photography, hiking, and trying new cuisines.
+					</p>
+					<p>
+						I believe in continuous learning and staying up-to-date with the latest trends 
+						in technology. This mindset helps me deliver cutting-edge solutions and 
+						maintain high standards in my work.
+					</p>
+				</section>
+			</div>
+			
+			<div class="about-sidebar">
+				<div class="sidebar-card">
+					<h3>Quick Facts</h3>
+					<div class="fact-item">
+						<span class="fact-label">Location:</span>
+						<span class="fact-value">Your City, Country</span>
+					</div>
+					<div class="fact-item">
+						<span class="fact-label">Experience:</span>
+						<span class="fact-value">5+ Years</span>
+					</div>
+					<div class="fact-item">
+						<span class="fact-label">Languages:</span>
+						<span class="fact-value">English, Spanish</span>
+					</div>
+					<div class="fact-item">
+						<span class="fact-label">Availability:</span>
+						<span class="fact-value">Open to opportunities</span>
+					</div>
+				</div>
+				
+				<div class="sidebar-card">
+					<h3>Certifications</h3>
+					<div class="cert-item">
+						<h4>AWS Certified Developer</h4>
+						<p>Amazon Web Services • 2023</p>
+					</div>
+					<div class="cert-item">
+						<h4>Google Cloud Professional</h4>
+						<p>Google Cloud • 2022</p>
+					</div>
+					<div class="cert-item">
+						<h4>React Developer Certification</h4>
+						<p>Meta • 2021</p>
+					</div>
+				</div>
+				
+				<div class="sidebar-card">
+					<h3>Fun Facts</h3>
+					<ul class="fun-facts">
+						<li>☕ I drink way too much coffee</li>
+						<li>📚 I read 2-3 tech books per month</li>
+						<li>🏃‍♂️ I'm training for a marathon</li>
+						<li>🎸 I play guitar in my spare time</li>
+						<li>🌱 I'm learning Japanese</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.page-header {
+		text-align: center;
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.page-header h1 {
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.about-content {
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+	
+	.about-grid {
+		display: grid;
+		grid-template-columns: 2fr 1fr;
+		gap: var(--spacing-3xl);
+	}
+	
+	.about-section {
+		margin-bottom: var(--spacing-3xl);
+	}
+	
+	.about-section h2 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-lg);
+		border-bottom: 2px solid var(--color-accent);
+		padding-bottom: var(--spacing-sm);
+	}
+	
+	.about-section p {
+		margin-bottom: var(--spacing-lg);
+		line-height: 1.7;
+	}
+	
+	.expertise-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+		gap: var(--spacing-lg);
+		margin-top: var(--spacing-lg);
+	}
+	
+	.expertise-item {
+		padding: var(--spacing-lg);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		text-align: center;
+		transition: all var(--transition-normal);
+	}
+	
+	.expertise-item:hover {
+		transform: translateY(-4px);
+		border-color: var(--color-accent);
+	}
+	
+	.expertise-icon {
+		font-size: 2rem;
+		margin-bottom: var(--spacing-md);
+	}
+	
+	.expertise-item h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-sm);
+		font-size: 1.125rem;
+	}
+	
+	.expertise-item p {
+		font-size: 0.875rem;
+		margin: 0;
+	}
+	
+	.about-sidebar {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-xl);
+	}
+	
+	.sidebar-card {
+		padding: var(--spacing-xl);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+	}
+	
+	.sidebar-card h3 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-lg);
+		font-size: 1.25rem;
+	}
+	
+	.fact-item {
+		display: flex;
+		justify-content: space-between;
+		margin-bottom: var(--spacing-md);
+		padding-bottom: var(--spacing-sm);
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.fact-item:last-child {
+		margin-bottom: 0;
+		border-bottom: none;
+	}
+	
+	.fact-label {
+		color: var(--color-text-secondary);
+		font-weight: 500;
+	}
+	
+	.fact-value {
+		color: var(--color-text-primary);
+		text-align: right;
+	}
+	
+	.cert-item {
+		margin-bottom: var(--spacing-lg);
+		padding-bottom: var(--spacing-lg);
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.cert-item:last-child {
+		margin-bottom: 0;
+		padding-bottom: 0;
+		border-bottom: none;
+	}
+	
+	.cert-item h4 {
+		color: var(--color-text-primary);
+		margin-bottom: var(--spacing-xs);
+		font-size: 1rem;
+	}
+	
+	.cert-item p {
+		color: var(--color-text-secondary);
+		font-size: 0.875rem;
+		margin: 0;
+	}
+	
+	.fun-facts {
+		list-style: none;
+		padding: 0;
+	}
+	
+	.fun-facts li {
+		padding: var(--spacing-sm) 0;
+		color: var(--color-text-secondary);
+		border-bottom: 1px solid var(--color-border);
+	}
+	
+	.fun-facts li:last-child {
+		border-bottom: none;
+	}
+	
+	@media (max-width: 768px) {
+		.about-grid {
+			grid-template-columns: 1fr;
+			gap: var(--spacing-2xl);
+		}
+		
+		.expertise-grid {
+			grid-template-columns: 1fr;
+		}
+		
+		.fact-item {
+			flex-direction: column;
+			gap: var(--spacing-xs);
+		}
+		
+		.fact-value {
+			text-align: left;
+		}
+	}
+</style>

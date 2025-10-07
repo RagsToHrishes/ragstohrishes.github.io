@@ -1,0 +1,273 @@
+---
+import FirefliesBackground from '../components/FirefliesBackground';
+import PachinkoBackground from '../components/PachinkoBackground';
+
+export interface Props {
+  title: string;
+  description?: string;
+  usePachinko?: boolean;
+}
+
+const { title, description = "Personal website and portfolio", usePachinko = false } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={description} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Global Styles -->
+    <link rel="stylesheet" href="/src/styles/global.css" />
+  </head>
+  <body>
+    <!-- Background Component -->
+    {usePachinko ? (
+      <PachinkoBackground client:load />
+    ) : (
+      <FirefliesBackground client:load />
+    )}
+    
+    <div class="container">
+      <nav class="nav">
+        <div class="nav-left">
+          <button id="galtonButton" class="galton-nav-button">
+            Galton Prediction
+          </button>
+        </div>
+        <div class="nav-center">
+          <h2 class="text-gradient mb-0">Hrish Leen</h2>
+        </div>
+        <div class="nav-right">
+          <ul class="nav-links">
+            <li><a href="/" class="nav-link">Home</a></li>
+            <li><a href="/research" class="nav-link">Research</a></li>
+            <li><a href="/resume" class="nav-link">Resume</a></li>
+            <li><a href="/about" class="nav-link">About</a></li>
+            <li><a href="/contact" class="nav-link">Contact</a></li>
+          </ul>
+        </div>
+      </nav>
+      
+      <main>
+        <slot />
+      </main>
+      
+      <!-- Footer Button -->
+      <button class="footer-button" onclick="toggleFooter()">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      
+      <!-- Footer Modal -->
+      <div id="footerModal" class="footer-modal">
+        <div class="footer-content">
+          <button class="close-footer" onclick="toggleFooter()">&times;</button>
+          <p class="text-muted">
+            © 2024 Hrish Leen. Built with Astro & React.
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    function toggleFooter() {
+      const modal = document.getElementById('footerModal');
+      if (modal) {
+        modal.classList.toggle('show');
+      }
+    }
+    
+    function triggerGaltonDemo() {
+      // Find the pachinko canvas and trigger the galton demo
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const event = new CustomEvent('galtonDemo');
+        canvas.dispatchEvent(event);
+      }
+    }
+    
+    // Add event listener to the galton button
+    const galtonButton = document.getElementById('galtonButton');
+    if (galtonButton) {
+      galtonButton.addEventListener('click', triggerGaltonDemo);
+    }
+    
+    // Make the function globally available
+    window.toggleFooter = toggleFooter;
+  });
+</script>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    background: rgba(var(--color-bg-secondary-rgb), 0.8);
+    backdrop-filter: blur(5px);
+    z-index: 100;
+    margin-bottom: 0;
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    padding-left: var(--spacing-lg);
+    padding-right: var(--spacing-lg);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+  }
+  
+  .nav-left {
+    display: flex;
+    justify-content: flex-start;
+  }
+  
+  .nav-center {
+    display: flex;
+    justify-content: center;
+  }
+  
+  .nav-right {
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .container {
+    position: relative;
+    z-index: 15;
+    background: transparent;
+    pointer-events: none;
+  }
+  
+  .container > * {
+    pointer-events: auto;
+  }
+  
+  
+  .text-muted {
+    color: #FFB366;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+  
+  .nav h2 {
+    color: #FFB366;
+    font-weight: 800;
+    text-shadow: 0 4px 8px rgba(0, 0, 0, 0.8);
+  }
+  
+  .nav-link {
+    color: #FFB366;
+    font-weight: 600;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+  
+  .footer-button {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    background: rgba(var(--color-bg-secondary-rgb), 0.9);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #FFB366;
+  }
+  
+  .footer-button:hover {
+    transform: scale(1.1);
+    background: rgba(var(--color-bg-secondary-rgb), 1);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  }
+  
+  .footer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(5px);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .footer-modal.show {
+    display: flex;
+  }
+  
+  .footer-content {
+    background: rgba(var(--color-bg-secondary-rgb), 1);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-2xl);
+    text-align: center;
+    position: relative;
+    max-width: 400px;
+    margin: var(--spacing-lg);
+  }
+  
+  .close-footer {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #FFB366;
+    font-weight: bold;
+  }
+  
+  .galton-nav-button {
+    background: linear-gradient(135deg, #E94822 0%, #F2910A 100%);
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 15px rgba(233, 72, 34, 0.3);
+    transition: all 0.3s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    min-width: 140px;
+    text-align: center;
+  }
+  
+  .galton-nav-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(233, 72, 34, 0.4);
+    background: linear-gradient(135deg, #d13e1d 0%, #e6820a 100%);
+  }
+  
+  .galton-nav-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(233, 72, 34, 0.3);
+  }
+</style>
