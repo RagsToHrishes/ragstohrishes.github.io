@@ -39,7 +39,7 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
     <div class="container">
       <nav class="nav">
         <div class="nav-left">
-          <button id="galtonButton" class="galton-nav-button">
+          <button id="galtonButton" class="galton-nav-button" data-galton-trigger type="button">
             Galton Prediction
           </button>
         </div>
@@ -49,10 +49,24 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
           </a>
         </div>
         <div class="nav-right">
-          <ul class="nav-links">
+          <button class="nav-menu-toggle" type="button" aria-expanded="false" aria-controls="navMenu">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="nav-menu-icon" aria-hidden="true"></span>
+          </button>
+          <ul class="nav-links" id="navMenu" data-open="false">
             <li><a href="/research" class="nav-link">Research</a></li>
             <li><a href="/resume" class="nav-link">Resume</a></li>
             <li><a href="/contact" class="nav-link">Contact</a></li>
+            <li class="nav-menu-mobile-only">
+              <button
+                id="galtonButtonMobile"
+                class="galton-nav-button"
+                data-galton-trigger
+                type="button"
+              >
+                Galton Prediction
+              </button>
+            </li>
           </ul>
         </div>
       </nav>
@@ -84,7 +98,7 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
 </html>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
+  document.addEventListener('DOMContentLoaded', () => {
     function toggleFooter() {
       const modal = document.getElementById('footerModal');
       if (modal) {
@@ -100,12 +114,71 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
         canvas.dispatchEvent(event);
       }
     }
-    
-    // Add event listener to the galton button
-    const galtonButton = document.getElementById('galtonButton');
-    if (galtonButton) {
-      galtonButton.addEventListener('click', triggerGaltonDemo);
+
+    const navToggle = document.querySelector('.nav-menu-toggle');
+    const navMenu = document.getElementById('navMenu');
+
+    const closeMenu = () => {
+      if (!navMenu || !navToggle) return;
+      navMenu.dataset.open = 'false';
+      navToggle.setAttribute('aria-expanded', 'false');
+    };
+
+    const openMenu = () => {
+      if (!navMenu || !navToggle) return;
+      navMenu.dataset.open = 'true';
+      navToggle.setAttribute('aria-expanded', 'true');
+    };
+
+    if (navToggle && navMenu) {
+      navToggle.addEventListener('click', () => {
+        const isOpen = navMenu.dataset.open === 'true';
+        if (isOpen) {
+          closeMenu();
+        } else {
+          openMenu();
+        }
+      });
+
+      const interactiveItems = navMenu.querySelectorAll('a, button');
+      interactiveItems.forEach((item) => {
+        item.addEventListener('click', () => {
+          closeMenu();
+        });
+      });
+
+      window.addEventListener('resize', () => {
+        if (window.innerWidth > 768) {
+          closeMenu();
+        }
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!navMenu || navMenu.dataset.open !== 'true') {
+          return;
+        }
+
+        if (event.target instanceof Node) {
+          if (!navMenu.contains(event.target) && !navToggle.contains(event.target)) {
+            closeMenu();
+          }
+        }
+      });
+
+      navMenu.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeMenu();
+          if (navToggle instanceof HTMLElement) {
+            navToggle.focus();
+          }
+        }
+      });
     }
+    
+    const galtonButtons = document.querySelectorAll('[data-galton-trigger]');
+    galtonButtons.forEach((button) => {
+      button.addEventListener('click', triggerGaltonDemo);
+    });
     
     // Make the function globally available
     window.toggleFooter = toggleFooter;
@@ -142,6 +215,9 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
   .nav-right {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
+    gap: var(--spacing-md);
+    position: relative;
   }
   
   .container {
@@ -276,5 +352,172 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
   .galton-nav-button:active {
     transform: translateY(0);
     box-shadow: 0 2px 10px rgba(233, 72, 34, 0.3);
+  }
+
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xl);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .nav-menu-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 179, 102, 0.4);
+    background: rgba(var(--color-bg-secondary-rgb), 0.8);
+    color: #FFB366;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .nav-menu-toggle:hover,
+  .nav-menu-toggle:focus-visible {
+    outline: none;
+    background: rgba(var(--color-bg-secondary-rgb), 1);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  .nav-menu-icon,
+  .nav-menu-icon::before,
+  .nav-menu-icon::after {
+    display: block;
+    position: relative;
+    width: 18px;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  .nav-menu-icon::before,
+  .nav-menu-icon::after {
+    content: '';
+    position: absolute;
+    left: 0;
+  }
+
+  .nav-menu-icon::before {
+    transform: translateY(-6px);
+  }
+
+  .nav-menu-icon::after {
+    transform: translateY(6px);
+  }
+
+  .nav-menu-toggle[aria-expanded="true"] .nav-menu-icon {
+    background: transparent;
+  }
+
+  .nav-menu-toggle[aria-expanded="true"] .nav-menu-icon::before {
+    transform: rotate(45deg);
+  }
+
+  .nav-menu-toggle[aria-expanded="true"] .nav-menu-icon::after {
+    transform: rotate(-45deg);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 900px) {
+    .nav {
+      grid-template-columns: auto 1fr;
+      padding-left: var(--spacing-md);
+      padding-right: var(--spacing-md);
+    }
+
+    .nav-left {
+      display: none;
+    }
+
+    .nav-right {
+      justify-content: flex-end;
+    }
+
+    .nav-menu-toggle {
+      display: inline-flex;
+    }
+
+    .nav-links {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      flex-direction: column;
+      gap: 0;
+      background: rgba(var(--color-bg-secondary-rgb), 0.95);
+      border: 1px solid rgba(255, 179, 102, 0.35);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 20px 35px rgba(0, 0, 0, 0.45);
+      padding: var(--spacing-sm) 0;
+      min-width: 210px;
+      display: none;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+
+    .nav-links[data-open="true"] {
+      display: flex;
+    }
+
+    .nav-links li {
+      width: 100%;
+    }
+
+    .nav-links a,
+    .nav-links button {
+      display: block;
+      width: 100%;
+      padding: var(--spacing-sm) var(--spacing-lg);
+      text-align: left;
+      color: #FFB366;
+      background: transparent;
+      border: none;
+      font-weight: 600;
+    }
+
+    .nav-links a:hover,
+    .nav-links button:hover {
+      background: rgba(255, 179, 102, 0.1);
+    }
+
+    .nav-menu-mobile-only {
+      display: block;
+      margin-top: var(--spacing-sm);
+      padding-top: var(--spacing-sm);
+      border-top: 1px solid rgba(255, 179, 102, 0.2);
+    }
+
+    .nav-menu-mobile-only .galton-nav-button {
+      width: 100%;
+      min-width: 0;
+      background: linear-gradient(135deg, rgba(233, 72, 34, 0.9) 0%, rgba(242, 145, 10, 0.9) 100%);
+      box-shadow: none;
+    }
+
+    .nav-menu-mobile-only .galton-nav-button:hover {
+      transform: none;
+    }
+  }
+
+  @media (min-width: 901px) {
+    .nav-menu-mobile-only {
+      display: none;
+    }
   }
 </style>
