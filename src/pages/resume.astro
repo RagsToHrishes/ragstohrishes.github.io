@@ -1,11 +1,171 @@
 ---
 import Layout from '../layouts/Layout.astro';
+
+type TimelineEntry = {
+	title: string;
+	organization: string;
+	period: string;
+	description: string;
+	bullets: string[];
+	logo?: {
+		src: string;
+		alt: string;
+	};
+};
+
+type EducationDetail = {
+	text: string;
+	href?: string;
+};
+
+type EducationEntry = {
+	degree: string;
+	institution: string;
+	period: string;
+	details: EducationDetail[];
+	logo?: {
+		src: string;
+		alt: string;
+	};
+};
+
+const experiences: TimelineEntry[] = [
+	{
+		title: 'Graduate Researcher',
+		organization: 'People, AI & Robots @ Georgia Tech',
+		period: '2024 - Present',
+		description:
+		"PhD student under Prof. Animesh Garg studying Robot Learning",
+		bullets: [
+		],
+		logo: {
+			src: '/logos/PAIR.png',
+			alt: 'PAIR'
+		}
+	},
+	{
+		title: 'Graduate Researcher',
+		organization: 'Berkeley Artificial Intelligence Research',
+		period: '2023 - 2024',
+		description:
+		"Under the advisement of PhD students Dhruv Shah and Laura Smith and Prof. Sergey Levine, completed my masters thesis in robot learning for mobile manipulation",
+		bullets: [
+
+		],
+		logo: {
+			src: '/logos/BAIR.png',
+			alt: 'BAIR'
+		}
+	},
+	{
+		title: 'Undergraduate Researcher',
+		organization: 'Berkeley Artificial Intelligence Research',
+		period: '2022 - 2023',
+		description:
+			'Advised by PhD student Dhruv Shah and Prof. Sergey Levine, investigating offline reinforcement learning for navigational robots.',
+		bullets: [
+			
+		],
+		logo: {
+			src: '/logos/BAIR.png',
+			alt: 'BAIR'
+		}
+	},
+	{
+		title: 'IP Software Intern',
+		organization: 'Apple',
+		period: 'Summer 2023',
+		description:
+			'Built/Deployed AI models in IP software assistance ',
+		bullets: [
+			
+		],
+		logo: {
+			src: '/logos/apple.jpg',
+			alt: 'Apple'
+		}
+	}
+];
+
+const volunteering: TimelineEntry[] = [
+	{
+		title: 'Teaching Assistant',
+		organization: 'Organization Name',
+		period: '2023 - 2024',
+		description:
+			'TA for CS188 (Artificial Intelligence)',
+		bullets: [
+		],
+		logo: {
+			src: '/logos/AI.png',
+			alt: 'Organization Name logo'
+		}
+	},
+	{
+		title: 'Academic Service',
+		organization: 'UC Berkeley Electrical Engineering & Computer Sciences (EECS)',
+		period: '2021 - 2022',
+		description:
+			'Academic Intern for CS61A and CS61C. Lab tutor for EECS16B',
+		bullets: [
+		
+		],
+		logo: {
+			src: '/logos/EECS.jpg',
+			alt: 'EECS'
+		}
+	}
+];
+
+const education: EducationEntry[] = [
+	{
+		degree: "PhD Student In Robotics",
+		institution: 'Georgia Insititute of Technology',
+		period: '2024-Present',
+		details: [
+		
+		],
+		logo: {
+			src: '/logos/GT.png',
+			alt: 'University of California Berkeley logo'
+		}
+	},
+	{
+		degree: "EECS 5th Year Masters in CV/AI",
+		institution: 'University of California Berkeley',
+		period: '2023-2024',
+		details: [
+			{ text: 'GPA: 3.95' },
+			{
+				text: 'Masters thesis',
+				href: 'https://www2.eecs.berkeley.edu/Pubs/TechRpts/2024/EECS-2024-73.html'
+			}
+		],
+		logo: {
+			src: '/logos/Berkeley.svg',
+			alt: 'University of California Berkeley logo'
+		}
+	},
+	{
+		degree: 'Bachelor of Science in Computer Science',
+		institution: 'University of California Berkeley',
+		period: '2020 - 2023',
+		details: [
+			{
+				text: "Honor's Degree in Mathematics, in the Dean's List for College Of Letters & Science for Fall 2020, Fall 2021, Spring 2022, GPA: 3.965"
+			}
+		],
+		logo: {
+			src: '/logos/Berkeley.svg',
+			alt: 'University of California Berkeley logo'
+		}
+	}
+];
 ---
 
 <Layout title="Resume - Your Name" description="Download my resume and view my professional experience">
 	<div class="page-header">
 		<h1 class="text-gradient">Resume</h1>
-		<p class="text-secondary">My professional experience and skills</p>
 	</div>
 	
 	<div class="resume-content">
@@ -22,104 +182,119 @@ import Layout from '../layouts/Layout.astro';
 			<section class="resume-section">
 				<h2>Experience</h2>
 				<div class="timeline">
-					<div class="timeline-item">
-						<div class="timeline-marker"></div>
-						<div class="timeline-content">
-							<h3>Senior Developer</h3>
-							<h4>Company Name • 2022 - Present</h4>
-							<p>Leading development of web applications using modern technologies. Collaborating with cross-functional teams to deliver high-quality software solutions.</p>
-							<ul>
-								<li>Built scalable web applications using React and Node.js</li>
-								<li>Implemented CI/CD pipelines and automated testing</li>
-								<li>Mentored junior developers and conducted code reviews</li>
-							</ul>
+					{experiences.map((experience) => (
+						<div class="timeline-item">
+							<div class="timeline-marker"></div>
+							<div class="timeline-content">
+								<div class="timeline-header">
+									{experience.logo && (
+										<img
+											class="timeline-logo"
+											src={experience.logo.src}
+											alt={experience.logo.alt}
+											loading="lazy"
+											width="56"
+											height="56"
+										/>
+									)}
+									<div class="timeline-heading">
+										<h3>{experience.title}</h3>
+										<h4>{experience.organization} • {experience.period}</h4>
+									</div>
+								</div>
+								<p>{experience.description}</p>
+								{experience.bullets.length > 0 && (
+									<ul>
+										{experience.bullets.map((point) => (
+											<li>{point}</li>
+										))}
+									</ul>
+								)}
+							</div>
 						</div>
-					</div>
-					
-					<div class="timeline-item">
-						<div class="timeline-marker"></div>
-						<div class="timeline-content">
-							<h3>Full Stack Developer</h3>
-							<h4>Previous Company • 2020 - 2022</h4>
-							<p>Developed and maintained web applications, working closely with design and product teams to implement user-facing features.</p>
-							<ul>
-								<li>Created responsive web interfaces with React and Vue.js</li>
-								<li>Built RESTful APIs using Python and Node.js</li>
-								<li>Optimized database queries and improved application performance</li>
-							</ul>
-						</div>
-					</div>
-					
-					<div class="timeline-item">
-						<div class="timeline-marker"></div>
-						<div class="timeline-content">
-							<h3>Junior Developer</h3>
-							<h4>Startup Company • 2019 - 2020</h4>
-							<p>Started my professional journey as a junior developer, learning modern web development practices and contributing to various projects.</p>
-							<ul>
-								<li>Developed frontend components using HTML, CSS, and JavaScript</li>
-								<li>Learned version control with Git and collaborative development</li>
-								<li>Participated in agile development processes</li>
-							</ul>
-						</div>
-					</div>
+					))}
 				</div>
 			</section>
-			
+
+
 			<section class="resume-section">
 				<h2>Education</h2>
-				<div class="education-item">
-					<h3>Bachelor of Science in Computer Science</h3>
-					<h4>University Name • 2015 - 2019</h4>
-					<p>Graduated with honors, focusing on software engineering, algorithms, and data structures.</p>
+				<div class="education-list">
+					{education.map((entry) => (
+						<div class="education-item">
+							<div class="education-header">
+								{entry.logo && (
+									<img
+										class="education-logo"
+										src={entry.logo.src}
+										alt={entry.logo.alt}
+										loading="lazy"
+										width="64"
+										height="64"
+									/>
+								)}
+								<div class="education-heading">
+									<h3>{entry.degree}</h3>
+									<h4>{entry.institution} • {entry.period}</h4>
+								</div>
+							</div>
+							<p class="education-details">
+								{entry.details.map((detail) => (
+									<span class="education-detail">
+										{detail.href ? (
+											<a
+												class="education-link"
+												href={detail.href}
+												target="_blank"
+												rel="noreferrer noopener"
+											>
+												{detail.text}
+											</a>
+										) : (
+											<span>{detail.text}</span>
+										)}
+									</span>
+								))}
+							</p>
+						</div>
+					))}
 				</div>
 			</section>
 			
 			<section class="resume-section">
-				<h2>Skills</h2>
-				<div class="skills-grid">
-					<div class="skill-category">
-						<h3>Frontend</h3>
-						<div class="skill-tags">
-							<span class="skill-tag">React</span>
-							<span class="skill-tag">Vue.js</span>
-							<span class="skill-tag">TypeScript</span>
-							<span class="skill-tag">CSS3</span>
-							<span class="skill-tag">Sass</span>
+				<h2>Teaching & Volunteering</h2>
+				<div class="timeline">
+					{volunteering.map((experience) => (
+						<div class="timeline-item">
+							<div class="timeline-marker"></div>
+							<div class="timeline-content">
+								<div class="timeline-header">
+									{experience.logo && (
+										<img
+											class="timeline-logo"
+											src={experience.logo.src}
+											alt={experience.logo.alt}
+											loading="lazy"
+											width="56"
+											height="56"
+										/>
+									)}
+									<div class="timeline-heading">
+										<h3>{experience.title}</h3>
+										<h4>{experience.organization} • {experience.period}</h4>
+									</div>
+								</div>
+								<p>{experience.description}</p>
+								{experience.bullets.length > 0 && (
+									<ul>
+										{experience.bullets.map((point) => (
+											<li>{point}</li>
+										))}
+									</ul>
+								)}
+							</div>
 						</div>
-					</div>
-					
-					<div class="skill-category">
-						<h3>Backend</h3>
-						<div class="skill-tags">
-							<span class="skill-tag">Node.js</span>
-							<span class="skill-tag">Python</span>
-							<span class="skill-tag">Express</span>
-							<span class="skill-tag">Django</span>
-							<span class="skill-tag">REST APIs</span>
-						</div>
-					</div>
-					
-					<div class="skill-category">
-						<h3>Database</h3>
-						<div class="skill-tags">
-							<span class="skill-tag">PostgreSQL</span>
-							<span class="skill-tag">MongoDB</span>
-							<span class="skill-tag">Redis</span>
-							<span class="skill-tag">SQL</span>
-						</div>
-					</div>
-					
-					<div class="skill-category">
-						<h3>Tools & Others</h3>
-						<div class="skill-tags">
-							<span class="skill-tag">Git</span>
-							<span class="skill-tag">Docker</span>
-							<span class="skill-tag">AWS</span>
-							<span class="skill-tag">Figma</span>
-							<span class="skill-tag">Linux</span>
-						</div>
-					</div>
+					))}
 				</div>
 			</section>
 		</div>
@@ -216,58 +391,117 @@ import Layout from '../layouts/Layout.astro';
 		margin-bottom: var(--spacing-xs);
 		color: var(--color-text-secondary);
 	}
+
+	.timeline-header {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-md);
+		margin-bottom: var(--spacing-sm);
+	}
+
+	.timeline-heading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-2xs);
+	}
+
+	.timeline-logo {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 56px;
+		height: 56px;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-secondary);
+		padding: var(--spacing-2xs);
+		object-fit: contain;
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+	}
 	
+	.education-list {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-2xl);
+	}
+
 	.education-item {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-md);
 		padding: var(--spacing-xl);
 		background: var(--color-bg-secondary);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-lg);
+		box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
 	}
 	
+	.education-header {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing-lg);
+	}
+
+	.education-heading {
+		display: flex;
+		flex-direction: column;
+		gap: var(--spacing-2xs);
+	}
+
+	.education-logo {
+		width: 64px;
+		height: 64px;
+		border-radius: var(--radius-md);
+		border: 1px solid var(--color-border);
+		background: var(--color-bg-primary);
+		padding: var(--spacing-2xs);
+		object-fit: contain;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	}
+
 	.education-item h3 {
 		color: var(--color-text-primary);
-		margin-bottom: var(--spacing-xs);
 	}
 	
 	.education-item h4 {
 		color: var(--color-accent);
 		font-weight: 500;
-		margin-bottom: var(--spacing-sm);
 	}
-	
-	.skills-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: var(--spacing-xl);
-	}
-	
-	.skill-category {
-		padding: var(--spacing-lg);
-		background: var(--color-bg-secondary);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
-	}
-	
-	.skill-category h3 {
-		color: var(--color-text-primary);
-		margin-bottom: var(--spacing-md);
-		font-size: 1.125rem;
-	}
-	
-	.skill-tags {
+
+	.education-details {
+		margin: 0;
+		color: var(--color-text-secondary);
 		display: flex;
 		flex-wrap: wrap;
-		gap: var(--spacing-sm);
+		align-items: center;
+		gap: var(--spacing-2xs);
 	}
-	
-	.skill-tag {
-		background: var(--color-bg-tertiary);
-		color: var(--color-text-primary);
-		padding: var(--spacing-xs) var(--spacing-sm);
-		border-radius: var(--radius-sm);
-		font-size: 0.875rem;
+
+	.education-detail {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--spacing-2xs);
+	}
+
+	.education-detail:not(:last-child)::after {
+		content: '·';
+		color: var(--color-text-tertiary, var(--color-text-secondary));
+		margin-left: var(--spacing-2xs);
+	}
+
+	.education-link {
+		color: var(--color-accent);
 		font-weight: 500;
-		border: 1px solid var(--color-border);
+		text-decoration: none;
+		transition: color 0.2s ease, text-decoration-color 0.2s ease;
+	}
+
+	.education-link:hover,
+	.education-link:focus-visible {
+		color: var(--color-accent-hover);
+		text-decoration: underline;
+		text-decoration-thickness: 2px;
+		text-decoration-color: currentColor;
 	}
 	
 	@media (max-width: 768px) {
@@ -281,16 +515,37 @@ import Layout from '../layouts/Layout.astro';
 			max-width: 250px;
 		}
 		
-		.skills-grid {
-			grid-template-columns: 1fr;
-		}
-		
 		.timeline {
 			padding-left: var(--spacing-md);
 		}
 		
 		.timeline-item {
 			padding-left: var(--spacing-lg);
+		}
+
+		.timeline-header {
+			align-items: flex-start;
+			gap: var(--spacing-sm);
+		}
+
+		.timeline-logo {
+			width: 48px;
+			height: 48px;
+		}
+
+		.education-item {
+			padding: var(--spacing-lg);
+		}
+
+		.education-header {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: var(--spacing-sm);
+		}
+
+		.education-logo {
+			width: 56px;
+			height: 56px;
 		}
 	}
 </style>

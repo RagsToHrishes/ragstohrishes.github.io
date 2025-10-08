@@ -10,6 +10,7 @@ export interface Props {
 }
 
 const { title, description = "Personal website and portfolio", usePachinko = false } = Astro.props;
+const isHomePage = Astro.url.pathname === '/';
 ---
 
 <!DOCTYPE html>
@@ -39,9 +40,11 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
     <div class="container">
       <nav class="nav">
         <div class="nav-left">
-          <button id="galtonButton" class="galton-nav-button" data-galton-trigger type="button">
-            Galton Prediction
-          </button>
+          {isHomePage && (
+            <button id="galtonButton" class="galton-nav-button" data-galton-trigger type="button">
+              Galton Prediction
+            </button>
+          )}
         </div>
         <div class="nav-center">
           <a href="/" class="nav-home text-gradient mb-0" aria-label="Home">
@@ -57,16 +60,18 @@ const { title, description = "Personal website and portfolio", usePachinko = fal
             <li><a href="/research" class="nav-link">Research</a></li>
             <li><a href="/resume" class="nav-link">Resume</a></li>
             <li><a href="/contact" class="nav-link">Contact</a></li>
-            <li class="nav-menu-mobile-only">
-              <button
-                id="galtonButtonMobile"
-                class="galton-nav-button"
-                data-galton-trigger
-                type="button"
-              >
-                Galton Prediction
-              </button>
-            </li>
+            {isHomePage && (
+              <li class="nav-menu-mobile-only">
+                <button
+                  id="galtonButtonMobile"
+                  class="galton-nav-button"
+                  data-galton-trigger
+                  type="button"
+                >
+                  Galton Prediction
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </nav>
