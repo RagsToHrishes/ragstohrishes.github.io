@@ -1,0 +1,35 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Message Sent" description="Thanks for reaching out">
+	<section class="confirmation">
+		<h1 class="text-gradient">Thanks for reaching out!</h1>
+		<p class="text-secondary">
+			I've received your message and will get back to you as soon as possible.
+		</p>
+		<a class="btn btn-primary" href="/contact">Back to Contact</a>
+	</section>
+</Layout>
+
+<style>
+	.confirmation {
+		max-width: 640px;
+		margin: var(--spacing-3xl) auto;
+		padding: var(--spacing-3xl);
+		text-align: center;
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-xl);
+		box-shadow: var(--shadow-lg);
+	}
+	
+	.confirmation h1 {
+		margin-bottom: var(--spacing-lg);
+	}
+	
+	.confirmation p {
+		margin-bottom: var(--spacing-xl);
+		line-height: 1.7;
+	}
+</style>

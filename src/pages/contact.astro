@@ -24,8 +24,8 @@ import Layout from '../layouts/Layout.astro';
 							<div class="contact-icon">📧</div>
 							<div class="contact-details">
 								<h3>Email</h3>
-								<p>your.email@example.com</p>
-								<a href="mailto:your.email@example.com" class="contact-link">Send Email</a>
+								<p>hrishi.leen@gmail.com</p>
+								<a href="mailto:hrishi.leen@gmail.com" class="contact-link">Send Email</a>
 							</div>
 						</div>
 						
@@ -34,7 +34,7 @@ import Layout from '../layouts/Layout.astro';
 							<div class="contact-details">
 								<h3>LinkedIn</h3>
 								<p>Connect with me professionally</p>
-								<a href="https://linkedin.com/in/yourprofile" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
+								<a href="https://www.linkedin.com/in/hrish-leen-1451a71b8/" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
 							</div>
 						</div>
 						
@@ -43,18 +43,11 @@ import Layout from '../layouts/Layout.astro';
 							<div class="contact-details">
 								<h3>GitHub</h3>
 								<p>Check out my code and projects</p>
-								<a href="https://github.com/yourusername" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
+								<a href="https://github.com/RagsToHrishes" class="contact-link" target="_blank" rel="noopener noreferrer">View Profile</a>
 							</div>
 						</div>
 						
-						<div class="contact-method">
-							<div class="contact-icon">🐦</div>
-							<div class="contact-details">
-								<h3>Twitter</h3>
-								<p>Follow me for updates and thoughts</p>
-								<a href="https://twitter.com/yourusername" class="contact-link" target="_blank" rel="noopener noreferrer">Follow Me</a>
-							</div>
-						</div>
+						
 					</div>
 				</section>
 				
@@ -63,20 +56,13 @@ import Layout from '../layouts/Layout.astro';
 					<div class="opportunities">
 					<div class="opportunity-item">
 						<h3>🚀 New Research</h3>
-						<p>Exciting research projects and academic collaborations</p>
+						<p>Research projects and academic collaborations</p>
 					</div>
 						<div class="opportunity-item">
 							<h3>💼 Job Opportunities</h3>
 							<p>Full-time or freelance positions in web development</p>
 						</div>
-						<div class="opportunity-item">
-							<h3>🤝 Mentorship</h3>
-							<p>Helping junior developers grow and learn</p>
-						</div>
-						<div class="opportunity-item">
-							<h3>📚 Speaking</h3>
-							<p>Tech talks and workshops about web development</p>
-						</div>
+						
 					</div>
 				</section>
 			</div>
@@ -84,7 +70,15 @@ import Layout from '../layouts/Layout.astro';
 			<div class="contact-form-container">
 				<div class="contact-form-card">
 					<h2>Send a Message</h2>
-					<form class="contact-form" action="#" method="POST">
+					<form
+						class="contact-form"
+						action="https://formsubmit.co/hrishi.leen@gmail.com"
+						method="POST"
+					>
+						<input type="hidden" name="_next" value="https://ragstohrishes.github.io/contact-success">
+						<input type="hidden" name="_captcha" value="false">
+						<input type="hidden" name="_subject" value="New message via portfolio contact form">
+						<input type="text" name="_honey" tabindex="-1" autocomplete="off" style="display:none">
 						<div class="form-group">
 							<label for="name">Name *</label>
 							<input type="text" id="name" name="name" required>
