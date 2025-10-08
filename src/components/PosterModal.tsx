@@ -7,9 +7,18 @@ interface PosterModalProps {
   onClose: () => void;
   posterUrl: string;
   title: string;
+  posterSrcSet?: string;
+  posterSizes?: string;
 }
 
-const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, title }) => {
+const PosterModal: React.FC<PosterModalProps> = ({
+  isOpen,
+  onClose,
+  posterUrl,
+  title,
+  posterSrcSet,
+  posterSizes
+}) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDraggingRef = useRef(false);
@@ -238,6 +247,8 @@ const PosterModal: React.FC<PosterModalProps> = ({ isOpen, onClose, posterUrl, t
             src={posterUrl} 
             alt={title}
             className={styles.posterImage}
+            srcSet={posterSrcSet}
+            sizes={posterSizes}
             style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})` }}
             draggable={false}
           />

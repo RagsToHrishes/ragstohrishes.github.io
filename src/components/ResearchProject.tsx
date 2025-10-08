@@ -8,6 +8,7 @@ interface ResearchProjectProps {
   mediaUrl?: string;
   mediaType?: 'image' | 'gif' | 'video';
   posterUrl?: string;
+  posterSources?: Array<{ src: string; width: number }>;
   links: {
     paper?: string;
     github?: string;
@@ -26,6 +27,7 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
   mediaUrl,
   mediaType,
   posterUrl,
+  posterSources,
   links,
   authors,
   acceptedAt,
@@ -90,6 +92,9 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
   };
 
   const parsedVenues = parseVenues(acceptedAt);
+  const posterSrcSet = posterSources
+    ?.map(({ src, width }) => `${src} ${width}w`)
+    .join(', ');
 
   const renderMedia = () => {
     if (!mediaUrl || !mediaType) {
@@ -213,6 +218,8 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
           isOpen={isPosterModalOpen}
           onClose={() => setIsPosterModalOpen(false)}
           posterUrl={posterUrl}
+          posterSrcSet={posterSrcSet}
+          posterSizes="(max-width: 768px) 90vw, (min-width: 1440px) 1200px, 85vw"
           title={`${title} - Research Poster`}
         />
       )}
