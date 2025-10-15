@@ -10,6 +10,20 @@ import ResearchProject from '../components/ResearchProject';
 	
 	<div class="research-list">
 		<ResearchProject 
+							client:load
+							title="Towards Policy-Aware World Models"
+							description="Policy-gradient ESNR predicts downstream policy performance, giving a practical diagnostic for “policy-aware” world models and guiding pretraining, architecture tweaks, and policy choice."
+							links={{
+								paper: "https://openreview.net/pdf?id=Ro2eG1RRde",
+                website: "https://policy-aware.github.io/paper-anon/"
+							}}
+							authors={["Varun Giridhar", "Ignat Georgiev", "Hrish Leen", "Nicklas Hansen", "Animesh Garg"]}
+							acceptedAt="Preprint"
+							mediaType="gif"
+							mediaUrl="public/research/Policy-Aware-WM/tpwm.gif"
+							tags={[]}
+		/>
+		<ResearchProject 
 			client:load
 			title="FLASH: Flow-Based Language-Annotated Grasp Synthesis for Dexterous Hands"
 			description="FLASH, a method for language-conditioned dexterous grasping that jointly models task intent and physical contact quality for robot hands."
