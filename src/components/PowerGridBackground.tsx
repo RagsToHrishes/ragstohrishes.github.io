@@ -86,6 +86,24 @@ type Metrics = {
   storedCells: number;
 };
 
+type ObstacleRect = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
+
+type FixedMapLayout = {
+  obstacles: ObstacleRect[];
+  panelRects: ObstacleRect[];
+  hallwayY: number[];
+  leftLaneX: number;
+  centerLaneX: number;
+  rightLaneX: number;
+};
+
 const COLORS = {
   paper: '#F5F5F5',
   lime: '#B9E937',
@@ -101,6 +119,10 @@ const TOOL_OPTIONS: Array<{ id: Tool; label: string; short: string }> = [
   { id: 'lab', label: 'Lab', short: 'Lab' },
   { id: 'erase', label: 'Clear nearby', short: 'Clear' },
 ];
+
+const WORKER_RADIUS = 9;
+const STRUCTURE_PADDING = 22;
+const OBSTACLE_REPULSION_RANGE = 34;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -122,6 +144,82 @@ function hexToRgba(hex: string, alpha: number) {
   const green = Number.parseInt(normalized.slice(2, 4), 16);
   const blue = Number.parseInt(normalized.slice(4, 6), 16);
   return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function createRect(left: number, top: number, width: number, height: number): ObstacleRect {
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+  };
+}
+
+function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
+  const viewportWidth = Math.max(width, 360);
+  const viewportHeight = Math.max(height, 560);
+  const sidePadding = viewportWidth < 900 ? 18 : clamp(viewportWidth * 0.03, 22, 42);
+  const contentWidth = Math.min(viewportWidth - sidePadding * 2, 1080);
+  const contentLeft = (viewportWidth - contentWidth) * 0.5;
+  const contentRight = contentLeft + contentWidth;
+  const headerHeight = clamp(viewportHeight * 0.1, 72, 96);
+  const headerRect = createRect(
+    Math.max(12, contentLeft - 12),
+    10,
+    Math.min(viewportWidth - 24, contentWidth + 24),
+    headerHeight,
+  );
+
+  const availableTop = headerRect.bottom + 18;
+  const availableBottom = viewportHeight - 28;
+  const rowGap = clamp(viewportHeight * 0.02, 16, 26);
+  const rowHeight = Math.max(
+    92,
+    (availableBottom - availableTop - rowGap * 3) / 4,
+  );
+  const panelSpecs = viewportWidth < 900
+    ? [
+        { align: 'center' as const, width: Math.min(contentWidth * 0.94, viewportWidth - sidePadding * 2), factor: 0.54 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.96, viewportWidth - sidePadding * 2), factor: 0.58 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.96, viewportWidth - sidePadding * 2), factor: 0.58 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.94, viewportWidth - sidePadding * 2), factor: 0.54 },
+      ]
+    : [
+        { align: 'center' as const, width: Math.min(contentWidth * 0.68, 730), factor: 0.54 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.78, 840), factor: 0.62 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.78, 840), factor: 0.62 },
+        { align: 'center' as const, width: Math.min(contentWidth * 0.68, 730), factor: 0.54 },
+      ];
+
+  const panelRects = panelSpecs.map((spec, index) => {
+    const panelHeight = clamp(rowHeight * spec.factor, 92, rowHeight - 8);
+    const top = availableTop + index * (rowHeight + rowGap) + (rowHeight - panelHeight) * 0.5;
+    const left = spec.align === 'left'
+      ? contentLeft
+      : spec.align === 'right'
+        ? contentRight - spec.width
+        : (viewportWidth - spec.width) * 0.5;
+
+    return createRect(left, top, spec.width, panelHeight);
+  });
+
+  const hallwayY = [
+    clamp((headerRect.bottom + panelRects[0].top) * 0.5, 72, viewportHeight - 72),
+    clamp((panelRects[0].bottom + panelRects[1].top) * 0.5, 72, viewportHeight - 72),
+    clamp((panelRects[1].bottom + panelRects[2].top) * 0.5, 72, viewportHeight - 72),
+    clamp((panelRects[2].bottom + panelRects[3].top) * 0.5, 72, viewportHeight - 72),
+  ];
+
+  return {
+    obstacles: [headerRect, ...panelRects],
+    panelRects,
+    hallwayY,
+    leftLaneX: clamp(contentLeft * 0.5, 40, viewportWidth - 40),
+    centerLaneX: clamp(viewportWidth * 0.5, 56, viewportWidth - 56),
+    rightLaneX: clamp(contentRight + (viewportWidth - contentRight) * 0.5, 40, viewportWidth - 40),
+  };
 }
 
 function createWorker(id: number, x: number, y: number): Worker {
@@ -181,6 +279,8 @@ export default function PowerGridBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const selectedToolRef = useRef<Tool>('generator');
   const resetWorldRef = useRef<() => void>(() => undefined);
+  const obstacleRectsRef = useRef<ObstacleRect[]>([]);
+  const mapLayoutRef = useRef<FixedMapLayout | null>(null);
   const worldRef = useRef<World>({
     width: 0,
     height: 0,
@@ -192,6 +292,7 @@ export default function PowerGridBackground() {
 
   const [selectedTool, setSelectedTool] = useState<Tool>('generator');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isMenuMinimized, setIsMenuMinimized] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>({
     status: 'Build a small grid',
     workers: 0,
@@ -224,6 +325,12 @@ export default function PowerGridBackground() {
   }, [isHelpOpen]);
 
   useEffect(() => {
+    if (isMenuMinimized && isHelpOpen) {
+      setIsHelpOpen(false);
+    }
+  }, [isHelpOpen, isMenuMinimized]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -239,6 +346,108 @@ export default function PowerGridBackground() {
     let statsTimer = 0;
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    function refreshMapLayout(width: number, height: number) {
+      const layout = buildFixedMapLayout(width, height);
+      mapLayoutRef.current = layout;
+      obstacleRectsRef.current = layout.obstacles;
+      return layout;
+    }
+
+    function isPointBlocked(x: number, y: number, padding = 0) {
+      return obstacleRectsRef.current.some((rect) => (
+        x > rect.left - padding &&
+        x < rect.right + padding &&
+        y > rect.top - padding &&
+        y < rect.bottom + padding
+      ));
+    }
+
+    function pushPointOutOfObstacles(
+      point: { x: number; y: number },
+      padding: number,
+    ) {
+      let moved = false;
+
+      for (let pass = 0; pass < 2; pass += 1) {
+        obstacleRectsRef.current.forEach((rect) => {
+          const left = rect.left - padding;
+          const right = rect.right + padding;
+          const top = rect.top - padding;
+          const bottom = rect.bottom + padding;
+
+          if (
+            point.x <= left ||
+            point.x >= right ||
+            point.y <= top ||
+            point.y >= bottom
+          ) {
+            return;
+          }
+
+          const adjustments = [
+            { distance: Math.abs(point.x - left), apply: () => { point.x = left; } },
+            { distance: Math.abs(right - point.x), apply: () => { point.x = right; } },
+            { distance: Math.abs(point.y - top), apply: () => { point.y = top; } },
+            { distance: Math.abs(bottom - point.y), apply: () => { point.y = bottom; } },
+          ];
+
+          adjustments.sort((first, second) => first.distance - second.distance);
+          adjustments[0]?.apply();
+          moved = true;
+        });
+      }
+
+      return moved;
+    }
+
+    function constrainPointToMap(
+      point: { x: number; y: number },
+      padding: number,
+    ) {
+      const world = worldRef.current;
+      const previousX = point.x;
+      const previousY = point.y;
+      point.x = clamp(point.x, padding, world.width - padding);
+      point.y = clamp(point.y, padding, world.height - padding);
+      const movedByObstacle = pushPointOutOfObstacles(point, padding);
+      point.x = clamp(point.x, padding, world.width - padding);
+      point.y = clamp(point.y, padding, world.height - padding);
+      return movedByObstacle || previousX !== point.x || previousY !== point.y;
+    }
+
+    function applyObstacleAvoidance(worker: Worker, dt: number) {
+      obstacleRectsRef.current.forEach((rect) => {
+        const left = rect.left - WORKER_RADIUS;
+        const right = rect.right + WORKER_RADIUS;
+        const top = rect.top - WORKER_RADIUS;
+        const bottom = rect.bottom + WORKER_RADIUS;
+        const nearestX = clamp(worker.x, left, right);
+        const nearestY = clamp(worker.y, top, bottom);
+        const dx = worker.x - nearestX;
+        const dy = worker.y - nearestY;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > OBSTACLE_REPULSION_RANGE) {
+          return;
+        }
+
+        const safeDist = dist || 0.001;
+        const force = (OBSTACLE_REPULSION_RANGE - safeDist) / OBSTACLE_REPULSION_RANGE;
+        worker.vx += (dx / safeDist) * force * 220 * dt;
+        worker.vy += (dy / safeDist) * force * 220 * dt;
+      });
+    }
+
+    function clipToMap() {
+      const world = worldRef.current;
+      ctx.beginPath();
+      ctx.rect(0, 0, world.width, world.height);
+      obstacleRectsRef.current.forEach((rect) => {
+        ctx.rect(rect.left, rect.top, rect.width, rect.height);
+      });
+      ctx.clip('evenodd');
+    }
 
     function nextId() {
       const id = worldRef.current.nextId;
@@ -308,34 +517,82 @@ export default function PowerGridBackground() {
       };
     }
 
+    function getDefaultLanes(width: number, height: number) {
+      const layout = refreshMapLayout(width, height);
+      return {
+        leftLaneX: layout.leftLaneX,
+        rightLaneX: layout.rightLaneX,
+        centerLaneX: layout.centerLaneX,
+        yPositions: layout.hallwayY,
+      };
+    }
+
     function resetWorld(keepSize = true) {
       const world = worldRef.current;
       const width = keepSize ? world.width : window.innerWidth;
       const height = keepSize ? world.height : window.innerHeight;
+      const lanes = getDefaultLanes(width, height);
 
       world.nextId = 1;
       world.width = width;
       world.height = height;
       world.structures = [
-        createStructure('coal', width * 0.16, height * 0.78, false),
-        createStructure('generator', width * 0.28, height * 0.68, false),
-        createStructure('battery', width * 0.73, height * 0.6, false),
-        createStructure('lab', width * 0.84, height * 0.36, false),
+        createStructure('coal', lanes.leftLaneX, lanes.yPositions[0], false),
+        createStructure('generator', lanes.rightLaneX, lanes.yPositions[0], false),
+        createStructure('coal', lanes.rightLaneX, lanes.yPositions[1], false),
+        createStructure('generator', lanes.leftLaneX, lanes.yPositions[1], false),
+        createStructure('battery', lanes.leftLaneX, lanes.yPositions[2], false),
+        createStructure('lab', lanes.rightLaneX, lanes.yPositions[2], false),
+        createStructure('battery', lanes.rightLaneX, lanes.yPositions[3], false),
+        createStructure('lab', lanes.leftLaneX, lanes.yPositions[3], false),
       ];
       world.workers = [];
       world.ripples = [];
 
-      const workerCount = 18;
+      world.structures.forEach((node) => {
+        constrainPointToMap(node, STRUCTURE_PADDING);
+      });
+
+      const workerAnchors = [
+        {
+          x: lanes.leftLaneX,
+          y: lanes.yPositions[0],
+        },
+        {
+          x: lanes.rightLaneX,
+          y: lanes.yPositions[1],
+        },
+        {
+          x: lanes.leftLaneX,
+          y: lanes.yPositions[2],
+        },
+        {
+          x: lanes.rightLaneX,
+          y: lanes.yPositions[3],
+        },
+        {
+          x: lanes.centerLaneX,
+          y: clamp((lanes.yPositions[1] + lanes.yPositions[2]) * 0.5, 96, height - 96),
+        },
+      ];
+
+      const workersPerAnchor = 5;
+      const workerCount = workerAnchors.length * workersPerAnchor;
       for (let index = 0; index < workerCount; index += 1) {
-        const angle = (index / workerCount) * Math.PI * 2;
+        const anchor = workerAnchors[index % workerAnchors.length];
+        const angle = (Math.floor(index / workerAnchors.length) / workersPerAnchor) * Math.PI * 2;
         world.workers.push(
           createWorker(
             nextId(),
-            width * 0.52 + Math.cos(angle) * 70,
-            height * 0.56 + Math.sin(angle) * 50,
+            anchor.x + Math.cos(angle) * 48,
+            anchor.y + Math.sin(angle) * 36,
           ),
         );
       }
+
+      world.workers.forEach((worker) => {
+        constrainPointToMap(worker, WORKER_RADIUS);
+      });
 
       setMetrics(deriveMetrics(world));
     }
@@ -360,6 +617,7 @@ export default function PowerGridBackground() {
       canvas.style.height = `${nextHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
+      refreshMapLayout(nextWidth, nextHeight);
 
       if (world.structures.length === 0) {
         resetWorld(true);
@@ -383,12 +641,26 @@ export default function PowerGridBackground() {
         ripple.x *= scaleX;
         ripple.y *= scaleY;
       });
+
+      world.structures.forEach((node) => {
+        constrainPointToMap(node, STRUCTURE_PADDING);
+      });
+      world.workers.forEach((worker) => {
+        constrainPointToMap(worker, WORKER_RADIUS);
+      });
     }
 
     function placeStructure(kind: StructureKind, x: number, y: number) {
       const world = worldRef.current;
+      refreshMapLayout(world.width, world.height);
       const clampedX = clamp(x, 32, world.width - 32);
       const clampedY = clamp(y, 32, world.height - 32);
+
+      if (isPointBlocked(clampedX, clampedY, STRUCTURE_PADDING)) {
+        addRipple(clampedX, clampedY, COLORS.ink);
+        return;
+      }
+
       const tooClose = world.structures.some(
         (node) => distance(node.x, node.y, clampedX, clampedY) < 46,
       );
@@ -755,12 +1027,14 @@ export default function PowerGridBackground() {
       worldRef.current.ripples.forEach((ripple) => {
         ripple.life -= dt * 1.5;
       });
+
+      worldRef.current.structures.forEach((node) => {
+        constrainPointToMap(node, STRUCTURE_PADDING);
+      });
     }
 
     function updateWorkers(dt: number) {
       const world = worldRef.current;
-      const centerX = world.width * 0.56;
-      const centerY = world.height * 0.5;
 
       world.workers.forEach((worker) => {
         if (
@@ -788,10 +1062,21 @@ export default function PowerGridBackground() {
           }
         } else {
           worker.wanderSeed += dt * (0.7 + worker.wobble * 0.00005);
-          const idleX = centerX + Math.cos(worker.wanderSeed) * 140;
-          const idleY = centerY + Math.sin(worker.wanderSeed * 1.2) * 90;
+          const idleAnchor = world.structures.reduce<Structure | null>((best, node) => {
+            if (!best) {
+              return node;
+            }
+            return distance(worker.x, worker.y, node.x, node.y) <
+              distance(worker.x, worker.y, best.x, best.y)
+              ? node
+              : best;
+          }, null);
+          const idleX = (idleAnchor?.x ?? world.width * 0.2) + Math.cos(worker.wanderSeed) * 44;
+          const idleY = (idleAnchor?.y ?? world.height * 0.5) + Math.sin(worker.wanderSeed * 1.2) * 28;
           steerTo(worker, idleX, idleY, 54, dt);
         }
+
+        applyObstacleAvoidance(worker, dt);
 
         const edgeForceX =
           (worker.x < 28 ? 1 : 0) -
@@ -815,6 +1100,11 @@ export default function PowerGridBackground() {
         worker.x = clamp(worker.x + worker.vx * dt, 10, world.width - 10);
         worker.y = clamp(worker.y + worker.vy * dt, 10, world.height - 10);
 
+        if (constrainPointToMap(worker, WORKER_RADIUS)) {
+          worker.vx *= 0.72;
+          worker.vy *= 0.72;
+        }
+
         if (speed > 2) {
           worker.angle = Math.atan2(worker.vy, worker.vx);
         }
@@ -823,10 +1113,6 @@ export default function PowerGridBackground() {
 
     function drawGrid() {
       const world = worldRef.current;
-      ctx.clearRect(0, 0, world.width, world.height);
-      ctx.fillStyle = COLORS.paper;
-      ctx.fillRect(0, 0, world.width, world.height);
-
       ctx.strokeStyle = COLORS.softInk;
       ctx.lineWidth = 1;
       for (let x = 0; x < world.width; x += 32) {
@@ -1016,6 +1302,8 @@ export default function PowerGridBackground() {
     function drawWorker(worker: Worker) {
       const x = Math.round(worker.x);
       const y = Math.round(worker.y);
+      const bodyLength = 8;
+      const tailLength = 5;
 
       ctx.save();
       ctx.translate(x, y);
@@ -1023,43 +1311,43 @@ export default function PowerGridBackground() {
 
       ctx.fillStyle = 'rgba(66, 66, 66, 0.12)';
       ctx.beginPath();
-      ctx.ellipse(0, 8, 9, 4, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 6, 6, 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = COLORS.green;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(-1, -1);
-      ctx.lineTo(6, -6);
-      ctx.moveTo(-1, 1);
-      ctx.lineTo(6, 6);
+      ctx.moveTo(0, -1);
+      ctx.lineTo(5, -5);
+      ctx.moveTo(0, 1);
+      ctx.lineTo(5, 5);
       ctx.stroke();
 
       ctx.fillStyle = COLORS.ink;
       ctx.beginPath();
-      ctx.moveTo(10, 0);
-      ctx.lineTo(-6, -6);
+      ctx.moveTo(bodyLength, 0);
+      ctx.lineTo(-tailLength, -5);
       ctx.lineTo(-1, 0);
-      ctx.lineTo(-6, 6);
+      ctx.lineTo(-tailLength, 5);
       ctx.closePath();
       ctx.fill();
 
       ctx.fillStyle = COLORS.lime;
-      ctx.fillRect(2, -1, 3, 2);
+      ctx.fillRect(1, -1, 2, 2);
 
       if (worker.carrying) {
         ctx.strokeStyle = COLORS.green;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(5, -3);
-        ctx.lineTo(10, -6);
-        ctx.moveTo(5, 3);
-        ctx.lineTo(10, 6);
+        ctx.moveTo(4, -2);
+        ctx.lineTo(8, -4);
+        ctx.moveTo(4, 2);
+        ctx.lineTo(8, 4);
         ctx.stroke();
         ctx.fillStyle = worker.carrying === 'coal' ? COLORS.ink : COLORS.green;
-        ctx.fillRect(9, -3, 6, 6);
+        ctx.fillRect(7, -2, 4, 4);
         ctx.strokeStyle = worker.carrying === 'coal' ? COLORS.lime : COLORS.ink;
-        ctx.strokeRect(9, -3, 6, 6);
+        ctx.strokeRect(7, -2, 4, 4);
       }
 
       ctx.restore();
@@ -1076,12 +1364,45 @@ export default function PowerGridBackground() {
       });
     }
 
+    function drawPanelWindows() {
+      const layout = mapLayoutRef.current;
+      if (!layout) {
+        return;
+      }
+
+      layout.panelRects.forEach((rect) => {
+        const x = Math.round(rect.left);
+        const y = Math.round(rect.top);
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+
+        ctx.fillStyle = 'rgba(245, 245, 245, 0.88)';
+        ctx.fillRect(x, y, width, height);
+
+        ctx.strokeStyle = 'rgba(66, 66, 66, 0.08)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
+        ctx.strokeRect(x + 1.5, y + 1.5, width - 3, height - 3);
+      });
+    }
+
     function drawScene() {
+      const world = worldRef.current;
+      ctx.clearRect(0, 0, world.width, world.height);
+      ctx.fillStyle = COLORS.paper;
+      ctx.fillRect(0, 0, world.width, world.height);
+      drawPanelWindows();
+
+      ctx.save();
+      clipToMap();
       drawGrid();
       drawNetworkHints();
-      worldRef.current.structures.forEach(drawNode);
-      worldRef.current.workers.forEach(drawWorker);
+      world.structures.forEach(drawNode);
+      world.workers.forEach(drawWorker);
       drawRipples();
+      ctx.restore();
     }
 
     function loop(now: number) {
@@ -1129,29 +1450,53 @@ export default function PowerGridBackground() {
         }}
       />
 
-      <aside className="sim-hotbar" aria-label="Power grid simulation controls">
+      <aside
+        className={`sim-hotbar ${isMenuMinimized ? 'is-minimized' : ''}`}
+        aria-label="Power grid simulation controls"
+      >
         <div className="sim-hotbar__header">
           <p className="sim-hotbar__eyebrow">Ambient power grid</p>
-          <button
-            type="button"
-            className="sim-hotbar__help-toggle"
-            aria-expanded={isHelpOpen}
-            aria-controls="boid-help-panel"
-            aria-label="About the boid simulation"
-            onClick={() => setIsHelpOpen((open) => !open)}
-          >
-            ?
-          </button>
+          <div className="sim-hotbar__actions">
+            <button
+              type="button"
+              className="sim-hotbar__icon-button"
+              aria-expanded={isHelpOpen && !isMenuMinimized}
+              aria-controls="boid-help-panel"
+              aria-label="About the boid simulation"
+              onClick={() => {
+                if (isMenuMinimized) {
+                  setIsMenuMinimized(false);
+                  setIsHelpOpen(true);
+                  return;
+                }
+
+                setIsHelpOpen((open) => !open);
+              }}
+            >
+              ?
+            </button>
+            <button
+              type="button"
+              className="sim-hotbar__icon-button"
+              aria-label={isMenuMinimized ? 'Expand boid menu' : 'Minimize boid menu'}
+              aria-expanded={!isMenuMinimized}
+              onClick={() => {
+                setIsMenuMinimized((collapsed) => !collapsed);
+              }}
+            >
+              {isMenuMinimized ? '+' : '–'}
+            </button>
+          </div>
         </div>
 
-        {isHelpOpen && (
+        {!isMenuMinimized && isHelpOpen && (
           <section id="boid-help-panel" className="sim-hotbar__help">
             <h2 className="sim-hotbar__help-title">How to play</h2>
             <p className="sim-hotbar__help-copy">
-              The worker-boids keep a tiny power grid alive. They flock when idle, then switch to jobs as soon as your layout creates demand.
+              The worker-boids keep a tiny power grid alive. The map now uses a fixed set of hallway routes, so scrolling the page does not reshape the boid traffic.
             </p>
             <ul className="sim-hotbar__help-list">
-              <li>Pick a tool, then click empty space in the background to place it.</li>
+              <li>Pick a tool, then click an open hallway lane to place it.</li>
               <li>
                 <span className="sim-hotbar__token">Coal</span> feeds <span className="sim-hotbar__token">Gen</span>, <span className="sim-hotbar__token">Gen</span> makes energy cells, <span className="sim-hotbar__token">Cell</span> stores them, and <span className="sim-hotbar__token">Lab</span> consumes them.
               </li>
@@ -1165,55 +1510,59 @@ export default function PowerGridBackground() {
           </section>
         )}
 
-        <div className="sim-hotbar__buttons" role="group" aria-label="Placement tools">
-          {TOOL_OPTIONS.map((tool) => (
+        {!isMenuMinimized && (
+          <>
+            <div className="sim-hotbar__buttons" role="group" aria-label="Placement tools">
+              {TOOL_OPTIONS.map((tool) => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  aria-label={tool.label}
+                  className={`sim-hotbar__button ${
+                    selectedTool === tool.id ? 'is-active' : ''
+                  }`}
+                  onClick={() => setSelectedTool(tool.id)}
+                >
+                  {tool.short}
+                </button>
+              ))}
+            </div>
             <button
-              key={tool.id}
               type="button"
-              aria-label={tool.label}
-              className={`sim-hotbar__button ${
-                selectedTool === tool.id ? 'is-active' : ''
-              }`}
-              onClick={() => setSelectedTool(tool.id)}
+              className="sim-hotbar__reset"
+              onClick={() => {
+                selectedToolRef.current = 'generator';
+                setSelectedTool('generator');
+                resetWorldRef.current();
+              }}
             >
-              {tool.short}
+              Reset layout
             </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="sim-hotbar__reset"
-          onClick={() => {
-            selectedToolRef.current = 'generator';
-            setSelectedTool('generator');
-            resetWorldRef.current();
-          }}
-        >
-          Reset layout
-        </button>
-        <dl className="sim-hotbar__stats">
-          <div>
-            <dt>Status</dt>
-            <dd>{metrics.status}</dd>
-          </div>
-          <div>
-            <dt>Workers</dt>
-            <dd>{metrics.workers}</dd>
-          </div>
-          <div>
-            <dt>Grid</dt>
-            <dd>
-              {metrics.coalPatches}/{metrics.generators}/{metrics.batteries}/{metrics.labs}
-            </dd>
-          </div>
-          <div>
-            <dt>Cells</dt>
-            <dd>{metrics.storedCells}</dd>
-          </div>
-        </dl>
-        <p className="sim-hotbar__hint">
-          Click open background space to place the selected structure.
-        </p>
+            <dl className="sim-hotbar__stats">
+              <div>
+                <dt>Status</dt>
+                <dd>{metrics.status}</dd>
+              </div>
+              <div>
+                <dt>Workers</dt>
+                <dd>{metrics.workers}</dd>
+              </div>
+              <div>
+                <dt>Grid</dt>
+                <dd>
+                  {metrics.coalPatches}/{metrics.generators}/{metrics.batteries}/{metrics.labs}
+                </dd>
+              </div>
+              <div>
+                <dt>Cells</dt>
+                <dd>{metrics.storedCells}</dd>
+              </div>
+            </dl>
+            <p className="sim-hotbar__hint">
+              Click an open hallway to place the selected structure.
+            </p>
+          </>
+        )}
       </aside>
     </>
   );

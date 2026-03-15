@@ -204,8 +204,8 @@ button {
 .home-stack {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-lg);
-  max-width: 780px;
+  gap: clamp(1.5rem, 2.5vw, 2.25rem);
+  max-width: 1020px;
   margin: 0 auto;
   padding: 1rem 0 4rem;
 }
@@ -218,6 +218,29 @@ button {
   padding: clamp(1.35rem, 2vw, 2rem);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(12px);
+}
+
+.flow-panel {
+  width: min(100%, 780px);
+  align-self: center;
+}
+
+.flow-panel--medium {
+  width: min(100%, 730px);
+  align-self: center;
+}
+
+.flow-panel--wide {
+  width: min(100%, 840px);
+  align-self: center;
+}
+
+.flow-panel--left {
+  align-self: center;
+}
+
+.flow-panel--right {
+  align-self: center;
 }
 
 .section-kicker {
@@ -539,12 +562,28 @@ button {
   backdrop-filter: blur(12px);
 }
 
+.sim-hotbar.is-minimized {
+  width: auto;
+  max-width: calc(100vw - 2rem);
+}
+
+.sim-hotbar.is-minimized .sim-hotbar__header {
+  margin-bottom: 0;
+}
+
 .sim-hotbar__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
+}
+
+.sim-hotbar__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
 }
 
 .sim-hotbar__eyebrow {
@@ -562,7 +601,7 @@ button {
   color: var(--color-accent);
 }
 
-.sim-hotbar__help-toggle {
+.sim-hotbar__icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -581,9 +620,9 @@ button {
     transform var(--transition-fast);
 }
 
-.sim-hotbar__help-toggle:hover,
-.sim-hotbar__help-toggle:focus-visible,
-.sim-hotbar__help-toggle[aria-expanded='true'] {
+.sim-hotbar__icon-button:hover,
+.sim-hotbar__icon-button:focus-visible,
+.sim-hotbar__icon-button[aria-expanded='true'] {
   border-color: var(--color-accent);
   background: rgba(185, 233, 55, 0.18);
   transform: translateY(-1px);
@@ -753,6 +792,21 @@ button {
 }
 
 @media (max-width: 900px) {
+  .home-stack {
+    max-width: 840px;
+  }
+
+  .flow-panel,
+  .flow-panel--medium,
+  .flow-panel--wide {
+    width: 100%;
+  }
+
+  .flow-panel--left,
+  .flow-panel--right {
+    align-self: center;
+  }
+
   .about-grid,
   .contact-methods,
   .opportunity-grid {

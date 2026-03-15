@@ -2,17 +2,11 @@
 import Layout from '../layouts/Layout.astro';
 import ResearchProject from '../components/ResearchProject';
 import {
-  aboutSections,
-  certifications,
   contactIntro,
   contactMethods,
   education,
   experiences,
-  expertise,
-  funFacts,
-  opportunities,
   profile,
-  quickFacts,
   researchProjects,
   volunteering,
 } from '../data/siteContent';
@@ -20,7 +14,7 @@ import {
 
 <Layout title="Hrish Leen" description={profile.description}>
   <div class="home-stack">
-    <section class="panel" aria-labelledby="hero-title">
+    <section class="panel flow-panel flow-panel--left flow-panel--medium" aria-labelledby="hero-title">
       <div class="hero-top">
         <img
           class="hero-portrait"
@@ -68,7 +62,7 @@ import {
       <p class="mb-0 mt-3">{profile.simHint}</p>
     </section>
 
-    <section id="research" class="panel" aria-labelledby="research-title">
+    <section id="research" class="panel flow-panel flow-panel--right flow-panel--wide" aria-labelledby="research-title">
       <div class="section-heading">
         <p class="section-kicker">Featured Research</p>
         <h2 id="research-title">Research Projects</h2>
@@ -86,7 +80,7 @@ import {
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="resume-title">
+    <section class="panel flow-panel flow-panel--left flow-panel--wide" aria-labelledby="resume-title">
       <div class="section-heading">
         <p class="section-kicker">Resume</p>
         <h2 id="resume-title">Experience</h2>
@@ -210,73 +204,7 @@ import {
       </div>
     </section>
 
-    <section class="panel" aria-labelledby="about-title">
-      <div class="section-heading">
-        <p class="section-kicker">About Me</p>
-        <h2 id="about-title">Get to know me better</h2>
-      </div>
-
-      <div class="about-grid">
-        <div class="about-main">
-          {aboutSections.map((section) => (
-            <section>
-              <h3>{section.title}</h3>
-              {section.paragraphs.map((paragraph) => (
-                <p>{paragraph}</p>
-              ))}
-
-              {section.title === 'What I Do' && (
-                <div class="expertise-grid">
-                  {expertise.map((item) => (
-                    <article class="expertise-item">
-                      <h3>{item.title}</h3>
-                      <p>{item.description}</p>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          ))}
-        </div>
-
-        <aside class="about-side">
-          <article class="mini-card">
-            <h3>Quick Facts</h3>
-            <div class="fact-list">
-              {quickFacts.map((fact) => (
-                <div class="fact-row">
-                  <span>{fact.label}</span>
-                  <span>{fact.value}</span>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article class="mini-card">
-            <h3>Certifications</h3>
-            <div class="fact-list">
-              {certifications.map((item) => (
-                <div class="fact-row">
-                  <span>{item.title}</span>
-                  <span>{item.detail}</span>
-                </div>
-              ))}
-            </div>
-          </article>
-
-          <article class="mini-card">
-            <h3>Fun Facts</h3>
-            <ul class="plain-list">
-              {funFacts.map((fact) => (
-                <li>{fact}</li>
-              ))}
-            </ul>
-          </article>
-        </aside>
-      </div>
-    </section>
-
-    <section id="contact" class="panel" aria-labelledby="contact-title">
+    <section id="contact" class="panel flow-panel flow-panel--left flow-panel--medium" aria-labelledby="contact-title">
       <div class="section-heading">
         <p class="section-kicker">{contactIntro.heading}</p>
         <h2 id="contact-title">{contactIntro.sectionTitle}</h2>
@@ -292,19 +220,6 @@ import {
             <a href={method.href} target={method.href.startsWith('http') ? '_blank' : undefined} rel={method.href.startsWith('http') ? 'noreferrer noopener' : undefined}>
               {method.action}
             </a>
-          </article>
-        ))}
-      </div>
-
-      <div class="section-heading mt-4">
-        <h3>What I'm Looking For</h3>
-      </div>
-
-      <div class="opportunity-grid">
-        {opportunities.map((opportunity) => (
-          <article class="opportunity-card">
-            <h3>{opportunity.title}</h3>
-            <p class="mb-0">{opportunity.description}</p>
           </article>
         ))}
       </div>
