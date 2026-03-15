@@ -183,22 +183,22 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
           <div className={styles.projectLinks}>
             {links.paper && (
               <a href={normalizeUrl(links.paper)} className={`${styles.link} ${styles.paperLink}`} target="_blank" rel="noopener noreferrer">
-                📄 Paper
+                Paper
               </a>
             )}
             {links.github && (
               <a href={normalizeUrl(links.github)} className={`${styles.link} ${styles.githubLink}`} target="_blank" rel="noopener noreferrer">
-                🐙 GitHub
+                GitHub
               </a>
             )}
             {links.website && (
               <a href={normalizeUrl(links.website)} className={`${styles.link} ${styles.websiteLink}`} target="_blank" rel="noopener noreferrer">
-                🚀 Website
+                Website
               </a>
             )}
             {links.data && (
               <a href={normalizeUrl(links.data)} className={`${styles.link} ${styles.dataLink}`} target="_blank" rel="noopener noreferrer">
-                📊 Data
+                Data
               </a>
             )}
             {posterUrl && (
@@ -206,7 +206,7 @@ const ResearchProject: React.FC<ResearchProjectProps> = ({
                 className={`${styles.link} ${styles.posterLink}`}
                 onClick={() => setIsPosterModalOpen(true)}
               >
-                🖼️ Poster
+                Poster
               </button>
             )}
           </div>

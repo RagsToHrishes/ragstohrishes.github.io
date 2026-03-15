@@ -1,254 +1,313 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Hero from '../components/Hero';
 import ResearchProject from '../components/ResearchProject';
+import {
+  aboutSections,
+  certifications,
+  contactIntro,
+  contactMethods,
+  education,
+  experiences,
+  expertise,
+  funFacts,
+  opportunities,
+  profile,
+  quickFacts,
+  researchProjects,
+  volunteering,
+} from '../data/siteContent';
 ---
 
-<Layout title="Hrish Leen - Personal Portfolio" description="Personal website and portfolio showcasing research, skills, and experience" usePachinko={true}>
-	<section class="landing-grid">
-		<div class="hero-col grid-panel">
-			<Hero client:load />
-		</div>
+<Layout title="Hrish Leen" description={profile.description}>
+  <div class="home-stack">
+    <section class="panel" aria-labelledby="hero-title">
+      <div class="hero-top">
+        <img
+          class="hero-portrait"
+          src="/images/selfie.jpg"
+          alt="Photo of Hrish Leen"
+          width="144"
+          height="144"
+          loading="eager"
+        />
 
-		<div class="research-col grid-panel">
-			<section class="featured-research">
-				<div class="container">
-					<div class="page-header">
-						<h2 class="text-gradient">Featured Research</h2>
-					</div>
-					<div class="research-preview">
-						<ResearchProject 
-							client:load
-							title="FLASH: Flow-Based Language-Annotated Grasp Synthesis for Dexterous Hands"
-							description="FLASH, a method for language-conditioned dexterous grasping that jointly models task intent and physical contact quality for robot hands."
-							links={{
-								paper: "bit.ly/flashgrasp",
-							}}
-							authors={["Hrish Leen", "Jeremy A. Collins", "Kunal Aneja", "Nhi Nguyen", "Priyadarshini Tamilselvan", "Sri Siddarth Chakaravarthy P", "Animesh Garg"]}
-							acceptedAt="CoRL 2025 Workshop Dexterous Manipulation Spotlight"
-							posterUrl="/research/FLASH/poster-3000.jpg"
-							posterSources={[
-								{ src: "/research/FLASH/poster-1600.jpg", width: 1600 },
-								{ src: "/research/FLASH/poster-3000.jpg", width: 3000 },
-								{ src: "/research/FLASH/poster-6000.jpg", width: 6000 },
-							]}
-							mediaType="gif"
-							mediaUrl="/research/FLASH/trajectory.gif"
-							tags={[]}
-						/>
-            <ResearchProject 
-							client:load
-							title="Towards Policy-Aware World Models"
-							description="Policy-gradient ESNR predicts downstream policy performance, giving a practical diagnostic for “policy-aware” world models and guiding pretraining, architecture tweaks, and policy choice."
-							links={{
-								paper: "https://openreview.net/pdf?id=Ro2eG1RRde",
-                website: "https://policy-aware.github.io/paper-anon/"
-							}}
-							authors={["Varun Giridhar", "Ignat Georgiev", "Hrish Leen", "Nicklas Hansen", "Animesh Garg"]}
-							acceptedAt="Preprint"
-							mediaType="gif"
-							mediaUrl="/research/Policy-Aware-WM/tpwm.gif"
-							tags={[]}
-						/>
-						<ResearchProject 
-							client:load
-							title="Dexterous Learning for Dexterous Robot Grasping - A Survey"
-							description="A comprehensive survey of deep learning approaches for dexterous robotic grasping, emphasizing recent progress enabled by multi-modal models and data-driven techniques."
-							links={{
-								paper: "bit.ly/graspSurvey",
-							}}
-							authors={["Hrish Leen", "Kunal Aneja", "Chetan Reddy", "Priyadarshini Tamilselvan", "Nhi Nguyen", "Sri Siddarth Chakaravarthy", "Jeremy Collins", "Miroslav Bogdanovic", "Animesh Garg"]}
-							acceptedAt="Journal Preprint"
-							mediaType="image"
-							mediaUrl="/research/Survey/OverallFigure.png"
-							tags={[]}
-						/>
+        <div class="hero-text">
+          <p class="section-kicker">{profile.greeting}</p>
+          <h1 id="hero-title" class="hero-title">{profile.name}</h1>
+          <p class="hero-subtitle">
+            {profile.title} at {profile.institution}
+          </p>
 
-						<div class="view-all-research">
-							<a href="/research" class="btn btn-primary">View All Research Projects</a>
-						</div>
-					</div>
-				</div>
-			</section>
-		</div>
-	</section>
+          <div class="link-row">
+            {profile.links.map((link) => (
+              <a
+                href={link.href}
+                class="link-chip"
+                download={link.download ? true : undefined}
+                target={link.href.startsWith('http') ? '_blank' : undefined}
+                rel={link.href.startsWith('http') ? 'noreferrer noopener' : undefined}
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {profile.intro.map((paragraph) => (
+        <p>{paragraph}</p>
+      ))}
+
+      <p class="section-kicker mt-3">{profile.interestsLabel}</p>
+      <div class="interest-list">
+        {profile.interests.map((interest) => (
+          <span class="interest-chip">{interest}</span>
+        ))}
+      </div>
+
+      <p class="mb-0 mt-3">{profile.simHint}</p>
+    </section>
+
+    <section id="research" class="panel" aria-labelledby="research-title">
+      <div class="section-heading">
+        <p class="section-kicker">Featured Research</p>
+        <h2 id="research-title">Research Projects</h2>
+        <p class="mb-0">
+          The homepage now carries the full research content directly in the main flow, inspired by the simple single-page structure of
+          {' '}
+          <a href="https://www.nicklashansen.com/" target="_blank" rel="noreferrer noopener">Nicklas Hansen's site</a>.
+        </p>
+      </div>
+
+      <div class="research-stack">
+        {researchProjects.map((project) => (
+          <ResearchProject client:load {...project} />
+        ))}
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="resume-title">
+      <div class="section-heading">
+        <p class="section-kicker">Resume</p>
+        <h2 id="resume-title">Experience</h2>
+      </div>
+
+      <div class="timeline-group">
+        <div class="timeline-subsection">
+          <div class="timeline-list">
+            {experiences.map((experience) => (
+              <article class="timeline-entry">
+                {experience.logo && (
+                  <img
+                    class="timeline-logo"
+                    src={experience.logo.src}
+                    alt={experience.logo.alt}
+                    loading="lazy"
+                    width="52"
+                    height="52"
+                  />
+                )}
+
+                <div class="timeline-copy">
+                  <div class="timeline-heading-row">
+                    <h3>{experience.title}</h3>
+                    <span class="timeline-period">{experience.period}</span>
+                  </div>
+                  <p class="timeline-org">{experience.organization}</p>
+                  <p>{experience.description}</p>
+                  {experience.bullets.length > 0 && (
+                    <ul>
+                      {experience.bullets.map((bullet) => (
+                        <li>{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div class="timeline-subsection">
+          <h3>Education</h3>
+          <div class="timeline-list">
+            {education.map((entry) => (
+              <article class="timeline-entry">
+                {entry.logo && (
+                  <img
+                    class="timeline-logo"
+                    src={entry.logo.src}
+                    alt={entry.logo.alt}
+                    loading="lazy"
+                    width="52"
+                    height="52"
+                  />
+                )}
+
+                <div class="timeline-copy">
+                  <div class="timeline-heading-row">
+                    <h3>{entry.degree}</h3>
+                    <span class="timeline-period">{entry.period}</span>
+                  </div>
+                  <p class="timeline-org">{entry.institution}</p>
+
+                  {entry.details.length > 0 && (
+                    <p class="detail-inline">
+                      {entry.details.map((detail) => (
+                        <span>
+                          {detail.href ? (
+                            <a href={detail.href} target="_blank" rel="noreferrer noopener">
+                              {detail.text}
+                            </a>
+                          ) : (
+                            detail.text
+                          )}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div class="timeline-subsection">
+          <h3>Teaching & Volunteering</h3>
+          <div class="timeline-list">
+            {volunteering.map((entry) => (
+              <article class="timeline-entry">
+                {entry.logo && (
+                  <img
+                    class="timeline-logo"
+                    src={entry.logo.src}
+                    alt={entry.logo.alt}
+                    loading="lazy"
+                    width="52"
+                    height="52"
+                  />
+                )}
+
+                <div class="timeline-copy">
+                  <div class="timeline-heading-row">
+                    <h3>{entry.title}</h3>
+                    <span class="timeline-period">{entry.period}</span>
+                  </div>
+                  <p class="timeline-org">{entry.organization}</p>
+                  <p>{entry.description}</p>
+                  {entry.bullets.length > 0 && (
+                    <ul>
+                      {entry.bullets.map((bullet) => (
+                        <li>{bullet}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="about-title">
+      <div class="section-heading">
+        <p class="section-kicker">About Me</p>
+        <h2 id="about-title">Get to know me better</h2>
+      </div>
+
+      <div class="about-grid">
+        <div class="about-main">
+          {aboutSections.map((section) => (
+            <section>
+              <h3>{section.title}</h3>
+              {section.paragraphs.map((paragraph) => (
+                <p>{paragraph}</p>
+              ))}
+
+              {section.title === 'What I Do' && (
+                <div class="expertise-grid">
+                  {expertise.map((item) => (
+                    <article class="expertise-item">
+                      <h3>{item.title}</h3>
+                      <p>{item.description}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          ))}
+        </div>
+
+        <aside class="about-side">
+          <article class="mini-card">
+            <h3>Quick Facts</h3>
+            <div class="fact-list">
+              {quickFacts.map((fact) => (
+                <div class="fact-row">
+                  <span>{fact.label}</span>
+                  <span>{fact.value}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article class="mini-card">
+            <h3>Certifications</h3>
+            <div class="fact-list">
+              {certifications.map((item) => (
+                <div class="fact-row">
+                  <span>{item.title}</span>
+                  <span>{item.detail}</span>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article class="mini-card">
+            <h3>Fun Facts</h3>
+            <ul class="plain-list">
+              {funFacts.map((fact) => (
+                <li>{fact}</li>
+              ))}
+            </ul>
+          </article>
+        </aside>
+      </div>
+    </section>
+
+    <section id="contact" class="panel" aria-labelledby="contact-title">
+      <div class="section-heading">
+        <p class="section-kicker">{contactIntro.heading}</p>
+        <h2 id="contact-title">{contactIntro.sectionTitle}</h2>
+        <p>{contactIntro.subheading}</p>
+        <p class="mb-0">{contactIntro.body}</p>
+      </div>
+
+      <div class="contact-methods">
+        {contactMethods.map((method) => (
+          <article class="contact-method">
+            <h3>{method.title}</h3>
+            <p>{method.detail}</p>
+            <a href={method.href} target={method.href.startsWith('http') ? '_blank' : undefined} rel={method.href.startsWith('http') ? 'noreferrer noopener' : undefined}>
+              {method.action}
+            </a>
+          </article>
+        ))}
+      </div>
+
+      <div class="section-heading mt-4">
+        <h3>What I'm Looking For</h3>
+      </div>
+
+      <div class="opportunity-grid">
+        {opportunities.map((opportunity) => (
+          <article class="opportunity-card">
+            <h3>{opportunity.title}</h3>
+            <p class="mb-0">{opportunity.description}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  </div>
 </Layout>
-
-<style>
-  /* Base: two-column split with fixed viewport height */
-  .landing-grid {
-    display: grid;
-    grid-template-columns: 0.4fr 1fr;
-    gap: var(--spacing-xl);
-    height: 70vh;
-    max-height: 70vh;
-    background: transparent;
-    align-items: stretch;
-    margin-top: var(--spacing-2xl);
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
-    overflow: hidden; /* inner panels provide scroll on desktop */
-  }
-
-  /* Shared panel styling */
-  .grid-panel {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-xl);
-    backdrop-filter: blur(6px);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    min-height: 0; /* allow inner scrollers */
-    overflow: hidden;
-  }
-
-  /* Hero column scrolls on desktop */
-  .hero-col {
-    overflow-y: auto;
-    min-height: 0;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* Research column: only inner list scrolls on desktop */
-  .research-col {
-    gap: var(--spacing-xl);
-    min-height: 0;
-    overflow: hidden; /* panel itself doesn't scroll */
-  }
-
-  .featured-research {
-    background: transparent;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xl);
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .featured-research .container {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xl);
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  /* List of research cards: single scroller on desktop */
-  .research-preview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xl);
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    -webkit-overflow-scrolling: touch;
-    padding-right: calc(var(--spacing-sm) + 4px);
-  }
-
-  .page-header {
-    text-align: center;
-    margin-bottom: var(--spacing-xl);
-  }
-
-  .page-header h2 {
-    margin-bottom: var(--spacing-md);
-    color: #FFB366;
-    font-weight: 900;
-    text-shadow: 0 6px 12px rgba(0, 0, 0, 1), 0 0 20px rgba(255, 179, 102, 0.5);
-  }
-
-  .page-header p {
-    color: #FFB366;
-    font-weight: 600;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-  }
-
-  .view-all-research {
-    text-align: center;
-    margin-top: var(--spacing-2xl);
-  }
-
-  /* Mobile/tablet: stack, no inner scroll, cards push naturally */
-  @media (max-width: 1024px) {
-    .landing-grid {
-      grid-template-columns: 1fr;
-      height: auto;
-      max-height: none;
-      overflow: visible;
-    }
-
-    .grid-panel {
-      height: auto;
-      min-height: auto;
-      overflow: visible;
-      /* Reduce padding on small viewports to fit content */
-      padding: var(--spacing-lg);
-    }
-
-    .hero-col,
-    .research-col {
-      overflow: visible;
-    }
-
-    .featured-research,
-    .featured-research .container {
-      overflow: visible;
-      min-height: auto;
-      flex: 0 1 auto;
-    }
-
-    .research-preview {
-      overflow: visible; /* allow cards to define height */
-      min-height: auto;
-      padding-right: 0;
-      flex: 0 1 auto;
-    }
-  }
-
-  /* Short viewport heights: also remove inner scroll so cards expand */
-  @media (max-height: 820px) {
-    .landing-grid {
-      /* Do not force two columns on narrow screens */
-      height: auto;
-      max-height: none;
-      overflow: visible;
-    }
-
-    .grid-panel {
-      height: auto;
-      min-height: auto;
-      overflow: visible;
-    }
-
-    .hero-col,
-    .research-col {
-      overflow: visible;
-    }
-
-    .featured-research,
-    .featured-research .container {
-      overflow: visible;
-      min-height: auto;
-      flex: 0 1 auto;
-    }
-
-    .research-preview {
-      overflow: visible;
-      min-height: auto;
-      padding-right: 0;
-      flex: 0 1 auto;
-    }
-  }
-
-  /* On short heights but wide screens, keep two columns */
-  @media (max-height: 820px) and (min-width: 1025px) {
-    .landing-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-</style>
