@@ -181,6 +181,7 @@ const FACTORY_BUILD_RATE = 9.2;
 const WORKER_MALFUNCTION_RATE = 0.0095;
 const WORKER_FAILURE_RATE = 0.0017;
 const HISTORY_LENGTH = 24;
+const NAVIGATION_CELL_SIZE = 10;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -311,6 +312,50 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
       viewportWidth - 40,
     ),
   };
+}
+
+function nearlyEqual(first: number, second: number, tolerance = 1) {
+  return Math.abs(first - second) <= tolerance;
+}
+
+function rectListsMatch(previous: ObstacleRect[], next: ObstacleRect[], tolerance = 1) {
+  if (previous.length !== next.length) {
+    return false;
+  }
+
+  return previous.every((rect, index) => {
+    const nextRect = next[index];
+    return Boolean(nextRect) &&
+      nearlyEqual(rect.left, nextRect.left, tolerance) &&
+      nearlyEqual(rect.top, nextRect.top, tolerance) &&
+      nearlyEqual(rect.width, nextRect.width, tolerance) &&
+      nearlyEqual(rect.height, nextRect.height, tolerance);
+  });
+}
+
+function layoutsMatch(previous: FixedMapLayout | null, next: FixedMapLayout, tolerance = 1) {
+  if (!previous) {
+    return false;
+  }
+
+  if (
+    !nearlyEqual(previous.leftLaneX, next.leftLaneX, tolerance) ||
+    !nearlyEqual(previous.centerLaneX, next.centerLaneX, tolerance) ||
+    !nearlyEqual(previous.rightLaneX, next.rightLaneX, tolerance)
+  ) {
+    return false;
+  }
+
+  if (previous.hallwayY.length !== next.hallwayY.length) {
+    return false;
+  }
+
+  if (!previous.hallwayY.every((lane, index) => nearlyEqual(lane, next.hallwayY[index] ?? lane, tolerance))) {
+    return false;
+  }
+
+  return rectListsMatch(previous.obstacles, next.obstacles, tolerance) &&
+    rectListsMatch(previous.panelRects, next.panelRects, tolerance);
 }
 
 function createWorker(id: number, x: number, y: number): Worker {
@@ -526,6 +571,7 @@ export default function PowerGridBackground() {
     let lastRenderTime = 0;
     let statsTimer = 0;
     let simulationTime = 0;
+    let gridCacheCanvas: HTMLCanvasElement | null = null;
     const navigatorWithHints = navigator as Navigator & {
       connection?: { saveData?: boolean };
       deviceMemory?: number;
@@ -537,13 +583,14 @@ export default function PowerGridBackground() {
       (navigatorWithHints.deviceMemory ?? 8) <= 4 ||
       (navigator.hardwareConcurrency ?? 8) <= 4;
     const compactViewport = window.innerWidth <= 900;
+    const veryLargeViewport = window.innerWidth * window.innerHeight >= 2_000_000 || window.innerWidth >= 1680;
     const performanceProfile = {
       lowPower: lowPowerDevice || compactViewport,
-      simplifiedVisuals: lowPowerDevice,
-      frameIntervalMs: lowPowerDevice ? 1000 / 30 : compactViewport ? 1000 / 40 : 0,
-      flockingNeighborStride: lowPowerDevice ? 2 : 1,
-      maxFlockingNeighbors: lowPowerDevice ? 18 : 32,
-      maxDpr: lowPowerDevice ? 1 : compactViewport ? 1.25 : 1.75,
+      simplifiedVisuals: lowPowerDevice || veryLargeViewport,
+      frameIntervalMs: lowPowerDevice ? 1000 / 30 : compactViewport ? 1000 / 40 : veryLargeViewport ? 1000 / 30 : 1000 / 45,
+      flockingNeighborStride: lowPowerDevice ? 2 : veryLargeViewport ? 2 : 1,
+      maxFlockingNeighbors: lowPowerDevice ? 18 : veryLargeViewport ? 18 : 24,
+      maxDpr: lowPowerDevice ? 1 : veryLargeViewport ? 1 : compactViewport ? 1.1 : 1.25,
     };
 
     const dpr = Math.max(1, Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1));
@@ -833,7 +880,7 @@ export default function PowerGridBackground() {
       obstacles: ObstacleRect[],
       version: number,
     ): NavigationGrid {
-      const cellSize = 10;
+      const cellSize = NAVIGATION_CELL_SIZE;
       const cols = Math.max(1, Math.ceil(width / cellSize));
       const rows = Math.max(1, Math.ceil(height / cellSize));
       const blocked = new Array(cols * rows).fill(false);
@@ -909,16 +956,28 @@ export default function PowerGridBackground() {
 
     function refreshMapLayout(width: number, height: number) {
       const layout = buildFixedMapLayout(width, height);
+      const layoutChanged = !layoutsMatch(mapLayoutRef.current, layout);
+      const nextCols = Math.max(1, Math.ceil(width / NAVIGATION_CELL_SIZE));
+      const nextRows = Math.max(1, Math.ceil(height / NAVIGATION_CELL_SIZE));
+      const gridSizeChanged =
+        !navigationGridRef.current ||
+        navigationGridRef.current.cols !== nextCols ||
+        navigationGridRef.current.rows !== nextRows;
+
       mapLayoutRef.current = layout;
       obstacleRectsRef.current = layout.obstacles;
-      navigationVersionRef.current += 1;
-      navigationGridRef.current = buildNavigationGrid(
-        width,
-        height,
-        layout.obstacles,
-        navigationVersionRef.current,
-      );
-      pathCacheRef.current.clear();
+
+      if (layoutChanged || gridSizeChanged) {
+        navigationVersionRef.current += 1;
+        navigationGridRef.current = buildNavigationGrid(
+          width,
+          height,
+          layout.obstacles,
+          navigationVersionRef.current,
+        );
+        pathCacheRef.current.clear();
+      }
+
       return layout;
     }
 
@@ -1170,7 +1229,12 @@ export default function PowerGridBackground() {
         return;
       }
 
+      const previousNavigationVersion = navigationVersionRef.current;
       refreshMapLayout(world.width, world.height);
+
+      if (navigationVersionRef.current === previousNavigationVersion) {
+        return;
+      }
 
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
@@ -1536,6 +1600,7 @@ export default function PowerGridBackground() {
       canvas.style.height = `${nextHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
+      gridCacheCanvas = null;
       refreshMapLayout(nextWidth, nextHeight);
 
       if (world.structures.length === 0) {
@@ -2233,26 +2298,39 @@ export default function PowerGridBackground() {
 
     function drawGrid() {
       const world = worldRef.current;
-      ctx.strokeStyle = COLORS.softInk;
-      ctx.lineWidth = 1;
-      for (let x = 0; x < world.width; x += 32) {
-        ctx.beginPath();
-        ctx.moveTo(x + 0.5, 0);
-        ctx.lineTo(x + 0.5, world.height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < world.height; y += 32) {
-        ctx.beginPath();
-        ctx.moveTo(0, y + 0.5);
-        ctx.lineTo(world.width, y + 0.5);
-        ctx.stroke();
+      if (!gridCacheCanvas) {
+        gridCacheCanvas = document.createElement('canvas');
+        gridCacheCanvas.width = Math.max(1, Math.floor(world.width));
+        gridCacheCanvas.height = Math.max(1, Math.floor(world.height));
+
+        const gridCtx = gridCacheCanvas.getContext('2d');
+        if (gridCtx) {
+          gridCtx.strokeStyle = COLORS.softInk;
+          gridCtx.lineWidth = 1;
+          for (let x = 0; x < world.width; x += 32) {
+            gridCtx.beginPath();
+            gridCtx.moveTo(x + 0.5, 0);
+            gridCtx.lineTo(x + 0.5, world.height);
+            gridCtx.stroke();
+          }
+          for (let y = 0; y < world.height; y += 32) {
+            gridCtx.beginPath();
+            gridCtx.moveTo(0, y + 0.5);
+            gridCtx.lineTo(world.width, y + 0.5);
+            gridCtx.stroke();
+          }
+
+          gridCtx.fillStyle = 'rgba(0, 185, 6, 0.06)';
+          for (let x = 16; x < world.width; x += 96) {
+            for (let y = 16; y < world.height; y += 96) {
+              gridCtx.fillRect(Math.round(x), Math.round(y), 2, 2);
+            }
+          }
+        }
       }
 
-      ctx.fillStyle = 'rgba(0, 185, 6, 0.06)';
-      for (let x = 16; x < world.width; x += 96) {
-        for (let y = 16; y < world.height; y += 96) {
-          ctx.fillRect(Math.round(x), Math.round(y), 2, 2);
-        }
+      if (gridCacheCanvas) {
+        ctx.drawImage(gridCacheCanvas, 0, 0, world.width, world.height);
       }
     }
 
