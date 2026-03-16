@@ -19,15 +19,11 @@ import {
         <clipPath id="home-stage-clip" clipPathUnits="userSpaceOnUse">
           <rect data-clip-rect />
           <rect data-clip-rect />
-          <rect data-clip-rect />
-          <rect data-clip-rect />
         </clipPath>
       </defs>
     </svg>
 
     <div class="panel-shells" aria-hidden="true">
-      <div class="panel panel-shell" data-panel-shell></div>
-      <div class="panel panel-shell" data-panel-shell></div>
       <div class="panel panel-shell" data-panel-shell></div>
       <div class="panel panel-shell" data-panel-shell></div>
     </div>
@@ -260,6 +256,7 @@ import {
       }
 
       const stage = document.getElementById('home-stage');
+      const siteNav = document.querySelector('.site-nav');
       const scrollLayer = document.getElementById('home-scroll-layer');
       const scrollTrack = document.getElementById('home-scroll-track');
       const shellElements = Array.from(document.querySelectorAll('[data-panel-shell]'));
@@ -280,6 +277,20 @@ import {
       let visibleSpan = stage.clientHeight;
 
       const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
+
+      const syncStageHeight = () => {
+        const navHeight = siteNav instanceof HTMLElement
+          ? siteNav.getBoundingClientRect().height
+          : 0;
+        const availableHeight = Math.max(320, window.innerHeight - navHeight);
+        stage.style.height = `${availableHeight}px`;
+        const topPanelHeight = availableHeight * 0.45;
+        const hallwayHeight = availableHeight * 0.1;
+        const bottomPanelHeight = Math.max(0, availableHeight - topPanelHeight - hallwayHeight);
+        stage.style.setProperty('--top-panel-height', `${topPanelHeight}px`);
+        stage.style.setProperty('--middle-hallway-height', `${hallwayHeight}px`);
+        stage.style.setProperty('--bottom-panel-height', `${bottomPanelHeight}px`);
+      };
 
       const applyScroll = () => {
         scrollTrack.style.transform = `translate3d(-50%, ${trackBaseTop - scrollOffset}px, 0)`;
@@ -308,6 +319,7 @@ import {
       };
 
       const measureLayout = () => {
+        syncStageHeight();
         const stageRect = stage.getBoundingClientRect();
         const rects = shellElements
           .map((element) => {
@@ -455,6 +467,9 @@ import {
         measureLayout();
       });
 
+      if (siteNav instanceof HTMLElement) {
+        resizeObserver.observe(siteNav);
+      }
       resizeObserver.observe(stage);
       resizeObserver.observe(scrollTrack);
       shellElements.forEach((element) => {

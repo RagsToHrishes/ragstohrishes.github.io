@@ -136,7 +136,7 @@ const TOOL_OPTIONS: Array<{ id: Tool; label: string; short: string }> = [
   { id: 'erase', label: 'Clear nearby', short: 'Clear' },
 ];
 
-const WORKER_RADIUS = 9;
+const WORKER_RADIUS = 5;
 const STRUCTURE_PADDING = 22;
 const OBSTACLE_REPULSION_RANGE = 34;
 
@@ -201,32 +201,42 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   if (panelRects.length === 0) {
     const fallbackWidth = Math.min(viewportWidth - 40, 920);
     const fallbackLeft = (viewportWidth - fallbackWidth) * 0.5;
-    const fallbackGap = (viewportHeight * 0.2) / 3;
-    const fallbackHeight = (viewportHeight - fallbackGap * 3) / 4;
-    panelRects = Array.from({ length: 4 }, (_, index) => (
+    const fallbackHallwayHeight = viewportHeight * 0.1;
+    const fallbackHeight = viewportHeight * 0.45;
+    const fallbackTop = [
+      0,
+      fallbackHeight + fallbackHallwayHeight,
+    ];
+    panelRects = fallbackTop.map((top) => (
       createRect(
         fallbackLeft,
-        index * (fallbackHeight + fallbackGap),
+        top,
         fallbackWidth,
         fallbackHeight,
       )
     ));
   }
 
-  const hallwayY = [
-    clamp(
-      headerRect
-        ? (headerRect.bottom + panelRects[0].top) * 0.5
-        : panelRects[0].top * 0.5,
-      72,
-      viewportHeight - 72,
-    ),
-    ...panelRects.slice(0, -1).map((rect, index) => clamp(
-      (rect.bottom + panelRects[index + 1].top) * 0.5,
-      72,
-      viewportHeight - 72,
-    )),
-  ].slice(0, 4);
+  const hallwayY = panelRects
+    .slice(0, -1)
+    .map((rect, index) => {
+      const nextRect = panelRects[index + 1];
+      const gap = nextRect.top - rect.bottom;
+      if (gap < 10) {
+        return null;
+      }
+
+      return clamp(
+        (rect.bottom + nextRect.top) * 0.5,
+        72,
+        viewportHeight - 72,
+      );
+    })
+    .filter((lane): lane is number => lane !== null);
+
+  if (hallwayY.length === 0) {
+    hallwayY.push(clamp(viewportHeight * 0.5, 72, viewportHeight - 72));
+  }
 
   const leftEdge = Math.min(...panelRects.map((rect) => rect.left));
   const rightEdge = Math.max(...panelRects.map((rect) => rect.right));
@@ -393,11 +403,11 @@ export default function PowerGridBackground() {
       obstacles: ObstacleRect[],
       version: number,
     ): NavigationGrid {
-      const cellSize = 28;
+      const cellSize = 10;
       const cols = Math.max(1, Math.ceil(width / cellSize));
       const rows = Math.max(1, Math.ceil(height / cellSize));
       const blocked = new Array(cols * rows).fill(false);
-      const padding = WORKER_RADIUS + 6;
+      const padding = WORKER_RADIUS;
 
       obstacles.forEach((rect) => {
         const minCol = clamp(Math.floor((rect.left - padding) / cellSize), 0, cols - 1);
@@ -786,7 +796,102 @@ export default function PowerGridBackground() {
         rightLaneX: layout.rightLaneX,
         centerLaneX: layout.centerLaneX,
         yPositions: layout.hallwayY,
+        panelRects: layout.panelRects,
       };
+    }
+
+    function buildInitialStructures(
+      lanes: ReturnType<typeof getDefaultLanes>,
+      width: number,
+      height: number,
+    ) {
+      if (lanes.panelRects.length >= 2) {
+        const topPanel = lanes.panelRects[0];
+        const bottomPanel = lanes.panelRects[lanes.panelRects.length - 1];
+        const topInset = clamp(topPanel.height * 0.16, 42, 110);
+        const bottomInset = clamp(bottomPanel.height * 0.16, 42, 110);
+        const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
+          {
+            kind: 'coal',
+            x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(topPanel.top + topInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
+          {
+            kind: 'generator',
+            x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(topPanel.top + topInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
+          {
+            kind: 'battery',
+            x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(bottomPanel.bottom - bottomInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
+          {
+            kind: 'lab',
+            x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(bottomPanel.bottom - bottomInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
+        ];
+
+        return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
+      }
+
+      const hallwayY = lanes.yPositions.length > 0
+        ? lanes.yPositions
+        : [clamp(height * 0.5, 96, height - 96)];
+
+      if (hallwayY.length === 1) {
+        const centerOffset = clamp(
+          (lanes.rightLaneX - lanes.leftLaneX) * 0.18,
+          60,
+          110,
+        );
+        const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
+          { kind: 'coal', x: lanes.leftLaneX, y: hallwayY[0] },
+          {
+            kind: 'generator',
+            x: clamp(lanes.centerLaneX - centerOffset, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: hallwayY[0],
+          },
+          {
+            kind: 'battery',
+            x: clamp(lanes.centerLaneX + centerOffset, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: hallwayY[0],
+          },
+          { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[0] },
+        ];
+
+        return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
+      }
+
+      if (hallwayY.length === 2) {
+        const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
+          { kind: 'coal', x: lanes.leftLaneX, y: hallwayY[0] },
+          { kind: 'generator', x: lanes.rightLaneX, y: hallwayY[0] },
+          { kind: 'battery', x: lanes.leftLaneX, y: hallwayY[1] },
+          { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[1] },
+        ];
+
+        return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
+      }
+
+      const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
+        { kind: 'coal', x: lanes.leftLaneX, y: hallwayY[0] },
+        { kind: 'generator', x: lanes.rightLaneX, y: hallwayY[0] },
+        { kind: 'coal', x: lanes.rightLaneX, y: hallwayY[1] },
+        { kind: 'generator', x: lanes.leftLaneX, y: hallwayY[1] },
+        { kind: 'battery', x: lanes.leftLaneX, y: hallwayY[2] },
+        { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[2] },
+      ];
+
+      if (hallwayY[3] !== undefined) {
+        placements.push(
+          { kind: 'battery', x: lanes.rightLaneX, y: hallwayY[3] },
+          { kind: 'lab', x: lanes.leftLaneX, y: hallwayY[3] },
+        );
+      }
+
+      return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
     }
 
     function resetWorld(keepSize = true) {
@@ -794,20 +899,14 @@ export default function PowerGridBackground() {
       const width = keepSize ? world.width : window.innerWidth;
       const height = keepSize ? world.height : window.innerHeight;
       const lanes = getDefaultLanes(width, height);
+      const hallwayY = lanes.yPositions.length > 0
+        ? lanes.yPositions
+        : [clamp(height * 0.5, 96, height - 96)];
 
       world.nextId = 1;
       world.width = width;
       world.height = height;
-      world.structures = [
-        createStructure('coal', lanes.leftLaneX, lanes.yPositions[0], false),
-        createStructure('generator', lanes.rightLaneX, lanes.yPositions[0], false),
-        createStructure('coal', lanes.rightLaneX, lanes.yPositions[1], false),
-        createStructure('generator', lanes.leftLaneX, lanes.yPositions[1], false),
-        createStructure('battery', lanes.leftLaneX, lanes.yPositions[2], false),
-        createStructure('lab', lanes.rightLaneX, lanes.yPositions[2], false),
-        createStructure('battery', lanes.rightLaneX, lanes.yPositions[3], false),
-        createStructure('lab', lanes.leftLaneX, lanes.yPositions[3], false),
-      ];
+      world.structures = buildInitialStructures(lanes, width, height);
       world.workers = [];
       world.ripples = [];
 
@@ -815,28 +914,17 @@ export default function PowerGridBackground() {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
 
-      const workerAnchors = [
-        {
-          x: lanes.leftLaneX,
-          y: lanes.yPositions[0],
-        },
-        {
-          x: lanes.rightLaneX,
-          y: lanes.yPositions[1],
-        },
-        {
-          x: lanes.leftLaneX,
-          y: lanes.yPositions[2],
-        },
-        {
-          x: lanes.rightLaneX,
-          y: lanes.yPositions[3],
-        },
-        {
+      const workerAnchors = world.structures.map((node) => ({
+        x: node.x,
+        y: node.y,
+      }));
+
+      if (hallwayY.length > 1) {
+        workerAnchors.push({
           x: lanes.centerLaneX,
-          y: clamp((lanes.yPositions[1] + lanes.yPositions[2]) * 0.5, 96, height - 96),
-        },
-      ];
+          y: clamp((hallwayY[0] + hallwayY[hallwayY.length - 1]) * 0.5, 96, height - 96),
+        });
+      }
 
       const workersPerAnchor = 5;
       const workerCount = workerAnchors.length * workersPerAnchor;
