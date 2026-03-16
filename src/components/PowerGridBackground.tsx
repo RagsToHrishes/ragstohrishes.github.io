@@ -61,6 +61,7 @@ type Worker = {
   route: RoutePoint[];
   routeIndex: number;
   routeKey: string | null;
+  routeVersion: number;
 };
 
 type Ripple = {
@@ -275,6 +276,7 @@ function createWorker(id: number, x: number, y: number): Worker {
     route: [],
     routeIndex: 0,
     routeKey: null,
+    routeVersion: 0,
   };
 }
 
@@ -395,6 +397,13 @@ export default function PowerGridBackground() {
       worker.route = [];
       worker.routeIndex = 0;
       worker.routeKey = null;
+      worker.routeVersion = 0;
+    }
+
+    function clearAllWorkerRoutes() {
+      worldRef.current.workers.forEach((worker) => {
+        clearWorkerRoute(worker);
+      });
     }
 
     function buildNavigationGrid(
@@ -611,19 +620,25 @@ export default function PowerGridBackground() {
       const nextRouteKey = worker.task
         ? `${worker.task.type}:${worker.task.phase}:${worker.task.sourceId}:${worker.task.targetId}`
         : null;
+      const currentRouteVersion = navigationVersionRef.current;
 
       if (!nextRouteKey) {
         clearWorkerRoute(worker);
         return;
       }
 
-      if (worker.routeKey === nextRouteKey && worker.route.length > 0) {
+      if (
+        worker.routeKey === nextRouteKey &&
+        worker.route.length > 0 &&
+        worker.routeVersion === currentRouteVersion
+      ) {
         return;
       }
 
       worker.route = planPath(worker.x, worker.y, target.x, target.y);
       worker.routeIndex = 0;
       worker.routeKey = nextRouteKey;
+      worker.routeVersion = currentRouteVersion;
     }
 
     function isPointBlocked(x: number, y: number, padding = 0) {
@@ -686,6 +701,28 @@ export default function PowerGridBackground() {
       point.x = clamp(point.x, padding, world.width - padding);
       point.y = clamp(point.y, padding, world.height - padding);
       return movedByObstacle || previousX !== point.x || previousY !== point.y;
+    }
+
+    function syncWorldToCurrentLayout() {
+      const world = worldRef.current;
+      if (world.width <= 0 || world.height <= 0) {
+        return;
+      }
+
+      refreshMapLayout(world.width, world.height);
+
+      world.structures.forEach((node) => {
+        constrainPointToMap(node, STRUCTURE_PADDING);
+      });
+
+      world.workers.forEach((worker) => {
+        if (constrainPointToMap(worker, WORKER_RADIUS)) {
+          worker.vx *= 0.72;
+          worker.vy *= 0.72;
+        }
+      });
+
+      clearAllWorkerRoutes();
     }
 
     function applyObstacleAvoidance(worker: Worker, dt: number) {
@@ -998,6 +1035,7 @@ export default function PowerGridBackground() {
       world.workers.forEach((worker) => {
         constrainPointToMap(worker, WORKER_RADIUS);
       });
+      clearAllWorkerRoutes();
     }
 
     function placeStructure(kind: StructureKind, x: number, y: number) {
@@ -1766,6 +1804,24 @@ export default function PowerGridBackground() {
       animationFrame = window.requestAnimationFrame(loop);
     }
 
+    let layoutSyncFrame = 0;
+    const layoutObserver = new ResizeObserver(() => {
+      if (layoutSyncFrame) {
+        return;
+      }
+
+      layoutSyncFrame = window.requestAnimationFrame(() => {
+        layoutSyncFrame = 0;
+        syncWorldToCurrentLayout();
+      });
+    });
+
+    Array.from(document.querySelectorAll('.panel-shell, .page-main, .site-nav')).forEach((element) => {
+      if (element instanceof HTMLElement) {
+        layoutObserver.observe(element);
+      }
+    });
+
     resizeWorld();
     canvas.addEventListener('pointerdown', handleCanvasPointer);
     window.addEventListener('resize', resizeWorld);
@@ -1773,6 +1829,10 @@ export default function PowerGridBackground() {
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
+      if (layoutSyncFrame) {
+        window.cancelAnimationFrame(layoutSyncFrame);
+      }
+      layoutObserver.disconnect();
       canvas.removeEventListener('pointerdown', handleCanvasPointer);
       window.removeEventListener('resize', resizeWorld);
     };
