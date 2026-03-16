@@ -67,6 +67,7 @@ type Worker = {
   routeIndex: number;
   routeKey: string | null;
   routeVersion: number;
+  routeRefreshAt: number;
   malfunctionTimer: number;
   idleTargetId: number | null;
   idleTargetTimer: number;
@@ -206,6 +207,10 @@ const COLORS = {
 };
 
 const WORKER_RADIUS = 5;
+const WORKER_MIN_SEPARATION = WORKER_RADIUS * 2 + 4;
+const LOCAL_AVOIDANCE_RADIUS = 26;
+const LOCAL_AVOIDANCE_LOOKAHEAD = 0.16;
+const LOCAL_AVOIDANCE_MAX_NEIGHBORS = 18;
 const STRUCTURE_PADDING = 22;
 const OBSTACLE_REPULSION_RANGE = 34;
 const MAX_GENERATOR_OUTPUT = 5;
@@ -503,6 +508,7 @@ function createWorker(id: number, x: number, y: number): Worker {
     routeIndex: 0,
     routeKey: null,
     routeVersion: 0,
+    routeRefreshAt: 0,
     malfunctionTimer: 0,
     idleTargetId: null,
     idleTargetTimer: 0,
@@ -702,6 +708,7 @@ export default function PowerGridBackground() {
     let lastRenderTime = 0;
     let statsTimer = 0;
     let simulationTime = 0;
+    let activeWorkerTrafficField: Float32Array | null = null;
     let backgroundSceneCanvas: HTMLCanvasElement | null = null;
     let gridCacheCanvas: HTMLCanvasElement | null = null;
     const navigatorWithHints = navigator as Navigator & {
@@ -983,6 +990,7 @@ export default function PowerGridBackground() {
       worker.routeIndex = 0;
       worker.routeKey = null;
       worker.routeVersion = 0;
+      worker.routeRefreshAt = 0;
     }
 
     function clearAllWorkerRoutes() {
@@ -1158,10 +1166,13 @@ export default function PowerGridBackground() {
         return [{ x: endX, y: endY }];
       }
 
+      const useTrafficAwareRouting = activeWorkerTrafficField !== null;
       const cacheKey = `${grid.version}:${start.col},${start.row}:${goal.col},${goal.row}`;
-      const cachedPath = pathCacheRef.current.get(cacheKey);
-      if (cachedPath) {
-        return [...cachedPath, { x: endX, y: endY }];
+      if (!useTrafficAwareRouting) {
+        const cachedPath = pathCacheRef.current.get(cacheKey);
+        if (cachedPath) {
+          return [...cachedPath, { x: endX, y: endY }];
+        }
       }
 
       const totalCells = grid.cols * grid.rows;
@@ -1271,7 +1282,9 @@ export default function PowerGridBackground() {
             pathCells.shift();
           }
 
-          pathCacheRef.current.set(cacheKey, pathCells);
+          if (!useTrafficAwareRouting) {
+            pathCacheRef.current.set(cacheKey, pathCells);
+          }
           return [...pathCells, { x: endX, y: endY }];
         }
 
@@ -1302,7 +1315,11 @@ export default function PowerGridBackground() {
             return;
           }
 
-          const tentativeScore = gScore[currentIndex] + cost;
+          const trafficPenalty =
+            useTrafficAwareRouting && neighborIndex !== goalIndex
+          ? (activeWorkerTrafficField?.[neighborIndex] ?? 0) * 2.8
+              : 0;
+          const tentativeScore = gScore[currentIndex] + cost + trafficPenalty;
 
           if (seen[neighborIndex] === mark && tentativeScore >= gScore[neighborIndex]) {
             return;
@@ -1320,11 +1337,14 @@ export default function PowerGridBackground() {
       return [{ x: endX, y: endY }];
     }
 
-    function ensureWorkerRoute(worker: Worker, target: Structure) {
+    function ensureWorkerRoute(worker: Worker, target: Structure, approachPoint?: RoutePoint) {
+      const routeDestination = approachPoint ?? { x: target.x, y: target.y };
+      const routeCellCol = Math.round(routeDestination.x / NAVIGATION_CELL_SIZE);
+      const routeCellRow = Math.round(routeDestination.y / NAVIGATION_CELL_SIZE);
       const nextRouteKey = worker.task
-        ? `${worker.task.type}:${worker.task.phase}:${worker.task.sourceId}:${worker.task.targetId}`
+        ? `${worker.task.type}:${worker.task.phase}:${worker.task.sourceId}:${worker.task.targetId}:${routeCellCol}:${routeCellRow}`
         : null;
-      ensureRoute(worker, nextRouteKey, target.x, target.y);
+      ensureRoute(worker, nextRouteKey, routeDestination.x, routeDestination.y);
     }
 
     function ensureRoute(
@@ -1334,6 +1354,20 @@ export default function PowerGridBackground() {
       targetY: number,
     ) {
       const currentRouteVersion = navigationVersionRef.current;
+      const nextWaypoint = worker.route[worker.routeIndex];
+      const navigationGrid = navigationGridRef.current;
+      const nextWaypointCell =
+        navigationGrid && nextWaypoint
+          ? pointToCell(navigationGrid, nextWaypoint.x, nextWaypoint.y)
+          : null;
+      const shouldRefreshForTraffic =
+        activeWorkerTrafficField !== null &&
+        navigationGrid !== null &&
+        nextWaypointCell !== null &&
+        simulationTime - worker.routeRefreshAt > 0.45 &&
+        activeWorkerTrafficField[
+          getCellIndex(navigationGrid, nextWaypointCell.col, nextWaypointCell.row)
+        ] > 0.75;
 
       if (!routeKey) {
         clearWorkerRoute(worker);
@@ -1343,7 +1377,8 @@ export default function PowerGridBackground() {
       if (
         worker.routeKey === routeKey &&
         worker.route.length > 0 &&
-        worker.routeVersion === currentRouteVersion
+        worker.routeVersion === currentRouteVersion &&
+        !shouldRefreshForTraffic
       ) {
         return;
       }
@@ -1352,6 +1387,7 @@ export default function PowerGridBackground() {
       worker.routeIndex = 0;
       worker.routeKey = routeKey;
       worker.routeVersion = currentRouteVersion;
+      worker.routeRefreshAt = simulationTime;
     }
 
     function advanceWorkerRoute(worker: Worker, targetX: number, targetY: number) {
@@ -1967,14 +2003,59 @@ export default function PowerGridBackground() {
       };
     }
 
-    function assignTask(worker: Worker) {
+    function buildStructureCrowdingMap(workers: Worker[], structures: Structure[]) {
+      const crowding = new Map<number, number>();
+
+      workers.forEach((worker) => {
+        let nearest: Structure | null = null;
+        let nearestDistance = Number.POSITIVE_INFINITY;
+
+        structures.forEach((node) => {
+          const nodeDistance = distance(worker.x, worker.y, node.x, node.y);
+          if (nodeDistance > node.size + 68 || nodeDistance >= nearestDistance) {
+            return;
+          }
+
+          nearest = node;
+          nearestDistance = nodeDistance;
+        });
+
+        if (!nearest) {
+          return;
+        }
+
+        const nearestNode = nearest as Structure;
+        crowding.set(nearestNode.id, (crowding.get(nearestNode.id) || 0) + 1);
+      });
+
+      return crowding;
+    }
+
+    function getStructureCrowdingPenalty(
+      structureId: number,
+      crowding: Map<number, number>,
+      incomingClaims = 0,
+    ) {
+      const load = (crowding.get(structureId) || 0) + incomingClaims;
+      if (load <= 2) {
+        return 0;
+      }
+
+      const excess = load - 2;
+      return excess * excess * 22 + load * 7;
+    }
+
+    function assignTask(
+      worker: Worker,
+      claims: ClaimCounts,
+      structureCrowding: Map<number, number>,
+    ) {
       const world = worldRef.current;
       const coalPatches = getNodes('coal') as CoalPatch[];
       const generators = getNodes('generator') as GeneratorNode[];
       const batteries = getNodes('battery') as BatteryNode[];
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
-      const claims = getClaimCounts();
       const desiredWorkers = currentStrategy.desiredWorkers;
       const priority = getTaskPriorityProfile(
         world,
@@ -2008,7 +2089,15 @@ export default function PowerGridBackground() {
         const travelPenalty =
           distance(worker.x, worker.y, source.x, source.y) * 0.35 +
           distance(source.x, source.y, generator.x, generator.y) * 0.45;
-        const score = urgency * 260 * priority.weights['fuel-generator'] - travelPenalty;
+        const sourceCrowdingPenalty =
+          getStructureCrowdingPenalty(source.id, structureCrowding) * 0.42;
+        const targetCrowdingPenalty =
+          getStructureCrowdingPenalty(generator.id, structureCrowding, pendingFuel);
+        const score =
+          urgency * 260 * priority.weights['fuel-generator'] -
+          travelPenalty -
+          sourceCrowdingPenalty -
+          targetCrowdingPenalty;
 
         if (!chosen || score > chosen.score) {
           chosen = {
@@ -2039,7 +2128,15 @@ export default function PowerGridBackground() {
           const travelPenalty =
             distance(worker.x, worker.y, generator.x, generator.y) * 0.35 +
             distance(generator.x, generator.y, battery.x, battery.y) * 0.45;
-          const score = urgency * 200 * priority.weights['charge-battery'] - travelPenalty;
+          const sourceCrowdingPenalty =
+            getStructureCrowdingPenalty(generator.id, structureCrowding, claims.fromGenerator.get(generator.id) || 0) * 0.5;
+          const targetCrowdingPenalty =
+            getStructureCrowdingPenalty(battery.id, structureCrowding, claims.toBattery.get(battery.id) || 0);
+          const score =
+            urgency * 200 * priority.weights['charge-battery'] -
+            travelPenalty -
+            sourceCrowdingPenalty -
+            targetCrowdingPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -2071,7 +2168,15 @@ export default function PowerGridBackground() {
           const travelPenalty =
             distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, lab.x, lab.y) * 0.45;
-          const score = urgency * 240 * priority.weights['power-lab'] - travelPenalty;
+          const sourceCrowdingPenalty =
+            getStructureCrowdingPenalty(battery.id, structureCrowding, claims.fromBattery.get(battery.id) || 0) * 0.52;
+          const targetCrowdingPenalty =
+            getStructureCrowdingPenalty(lab.id, structureCrowding, claims.toLab.get(lab.id) || 0);
+          const score =
+            urgency * 240 * priority.weights['power-lab'] -
+            travelPenalty -
+            sourceCrowdingPenalty -
+            targetCrowdingPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -2113,7 +2218,15 @@ export default function PowerGridBackground() {
           const travelPenalty =
             distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, factory.x, factory.y) * 0.45;
-          const score = urgency * 215 * priority.weights['power-factory'] - travelPenalty;
+          const sourceCrowdingPenalty =
+            getStructureCrowdingPenalty(battery.id, structureCrowding, claims.fromBattery.get(battery.id) || 0) * 0.5;
+          const targetCrowdingPenalty =
+            getStructureCrowdingPenalty(factory.id, structureCrowding, incomingPower);
+          const score =
+            urgency * 215 * priority.weights['power-factory'] -
+            travelPenalty -
+            sourceCrowdingPenalty -
+            targetCrowdingPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -2131,6 +2244,9 @@ export default function PowerGridBackground() {
 
       const selectedTask = (chosen as { score: number; task: Task } | null)?.task ?? null;
       worker.task = selectedTask;
+      if (selectedTask) {
+        applyTaskClaimDelta(claims, selectedTask, 1);
+      }
       clearWorkerRoute(worker);
     }
 
@@ -2207,6 +2323,103 @@ export default function PowerGridBackground() {
       grid.rows[workerIndex] = nextRow;
     }
 
+    function buildWorkerTrafficField(workers: Worker[]): Float32Array | null {
+      const grid = navigationGridRef.current;
+      if (!grid) {
+        return null;
+      }
+
+      const field = new Float32Array(grid.cols * grid.rows);
+
+      for (let index = 0; index < workers.length; index += 1) {
+        const worker = workers[index];
+        const { col, row } = pointToCell(grid, worker.x, worker.y);
+
+        for (let dr = -1; dr <= 1; dr += 1) {
+          for (let dc = -1; dc <= 1; dc += 1) {
+            const nextCol = col + dc;
+            const nextRow = row + dr;
+            if (isCellBlocked(grid, nextCol, nextRow)) {
+              continue;
+            }
+
+            const distanceWeight = dc === 0 && dr === 0 ? 1.35 : 0.55;
+            field[getCellIndex(grid, nextCol, nextRow)] += distanceWeight;
+          }
+        }
+      }
+
+      return field;
+    }
+
+    function resolveWorkerCrowding(
+      workers: Worker[],
+      deadWorkerIds: Set<number>,
+      passes = 3,
+    ) {
+      for (let pass = 0; pass < passes; pass += 1) {
+        const workerSpatialGrid = buildWorkerSpatialGrid(workers);
+
+        for (let workerIndex = 0; workerIndex < workers.length; workerIndex += 1) {
+          const worker = workers[workerIndex];
+          if (deadWorkerIds.has(worker.id)) {
+            continue;
+          }
+
+          const workerCol = workerSpatialGrid.cols[workerIndex];
+          const workerRow = workerSpatialGrid.rows[workerIndex];
+
+          for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
+            for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
+              const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
+              if (!bucket) {
+                continue;
+              }
+
+              bucket.forEach((otherIndex) => {
+                if (otherIndex <= workerIndex) {
+                  return;
+                }
+
+                const other = workers[otherIndex];
+                if (deadWorkerIds.has(other.id)) {
+                  return;
+                }
+
+                const dx = other.x - worker.x;
+                const dy = other.y - worker.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist >= WORKER_MIN_SEPARATION) {
+                  return;
+                }
+
+                const safeDist = dist || 0.001;
+                const overlap = WORKER_MIN_SEPARATION - safeDist;
+                const nx = dx / safeDist;
+                const ny = dy / safeDist;
+                const pushX = nx * overlap * 0.5;
+                const pushY = ny * overlap * 0.5;
+
+                worker.x -= pushX;
+                worker.y -= pushY;
+                other.x += pushX;
+                other.y += pushY;
+
+                worker.vx -= nx * overlap * 2.4;
+                worker.vy -= ny * overlap * 2.4;
+                other.vx += nx * overlap * 2.4;
+                other.vy += ny * overlap * 2.4;
+
+                constrainPointToMap(worker, WORKER_RADIUS);
+                constrainPointToMap(other, WORKER_RADIUS);
+              });
+            }
+          }
+        }
+      }
+    }
+
     function applyFlocking(
       worker: Worker,
       dt: number,
@@ -2262,8 +2475,9 @@ export default function PowerGridBackground() {
         }
 
         neighbors += 1;
-        separationX += dx / dist;
-        separationY += dy / dist;
+        const distanceWeight = 1 - dist / FLOCKING_RADIUS;
+        separationX += (dx / dist) * (0.8 + distanceWeight * 1.6);
+        separationY += (dy / dist) * (0.8 + distanceWeight * 1.6);
         alignmentX += other.vx;
         alignmentY += other.vy;
         cohesionX += other.x;
@@ -2279,8 +2493,8 @@ export default function PowerGridBackground() {
         cohesionX = cohesionX / neighbors - worker.x;
         cohesionY = cohesionY / neighbors - worker.y;
 
-        worker.vx += separationX * 0.55 * dt;
-        worker.vy += separationY * 0.55 * dt;
+        worker.vx += separationX * 0.85 * dt;
+        worker.vy += separationY * 0.85 * dt;
         worker.vx += (alignmentX - worker.vx) * 0.18 * dt;
         worker.vy += (alignmentY - worker.vy) * 0.18 * dt;
         worker.vx += cohesionX * 0.012 * dt;
@@ -2288,13 +2502,127 @@ export default function PowerGridBackground() {
       }
     }
 
+    function applyLocalWorkerAvoidance(
+      worker: Worker,
+      dt: number,
+      workerSpatialGrid: WorkerSpatialGrid,
+      workerIndex: number,
+    ) {
+      const world = worldRef.current;
+      const workerCol = workerSpatialGrid.cols[workerIndex];
+      const workerRow = workerSpatialGrid.rows[workerIndex];
+      let avoidX = 0;
+      let avoidY = 0;
+      let neighborsChecked = 0;
+
+      const projectedWorkerX = worker.x + worker.vx * LOCAL_AVOIDANCE_LOOKAHEAD;
+      const projectedWorkerY = worker.y + worker.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
+      const minGap = WORKER_MIN_SEPARATION + 2;
+
+      for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
+        for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
+          const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
+          if (!bucket) {
+            continue;
+          }
+
+          bucket.forEach((index) => {
+            if (index === workerIndex || neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
+              return;
+            }
+
+            const other = world.workers[index];
+            const projectedOtherX = other.x + other.vx * LOCAL_AVOIDANCE_LOOKAHEAD;
+            const projectedOtherY = other.y + other.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
+            let dx = projectedWorkerX - projectedOtherX;
+            let dy = projectedWorkerY - projectedOtherY;
+            let dist = Math.hypot(dx, dy);
+            if (dist <= 0.0001) {
+              // Deterministic fallback avoids unstable jitter at identical positions.
+              const fallbackAngle = (worker.id - other.id) * 2.399963229728653;
+              dx = Math.cos(fallbackAngle);
+              dy = Math.sin(fallbackAngle);
+              dist = 1;
+            }
+
+            if (dist > LOCAL_AVOIDANCE_RADIUS) {
+              return;
+            }
+
+            neighborsChecked += 1;
+            const closeness = 1 - dist / LOCAL_AVOIDANCE_RADIUS;
+            const closeness2 = closeness * closeness;
+            const nx = dx / dist;
+            const ny = dy / dist;
+            const side = worker.id < other.id ? 1 : -1;
+
+            avoidX += nx * (130 * closeness2);
+            avoidY += ny * (130 * closeness2);
+
+            if (dist < minGap) {
+              const overlap = minGap - dist;
+              avoidX += nx * overlap * 36;
+              avoidY += ny * overlap * 36;
+            }
+
+            // Side-slip term reduces head-on deadlocks when paths intersect.
+            avoidX += -ny * side * (18 * closeness2);
+            avoidY += nx * side * (18 * closeness2);
+          });
+
+          if (neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
+            break;
+          }
+        }
+
+        if (neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
+          break;
+        }
+      }
+
+      if (neighborsChecked === 0) {
+        return;
+      }
+
+      const force = Math.hypot(avoidX, avoidY);
+      if (force > 0) {
+        const maxForce = 210;
+        const scale = force > maxForce ? maxForce / force : 1;
+        worker.vx += avoidX * scale * dt;
+        worker.vy += avoidY * scale * dt;
+      }
+    }
+
+    function getTaskApproachPoint(worker: Worker, target: Structure): RoutePoint {
+      const world = worldRef.current;
+      const phaseOffset = worker.task?.phase === 'deliver' ? Math.PI * 0.37 : 0;
+      const angle = worker.id * 2.399963229728653 + target.id * 0.61 + phaseOffset;
+      const radius = target.size + (worker.carrying ? 22 : 18) + (worker.id % 3) * 2;
+
+      return {
+        x: clamp(
+          target.x + Math.cos(angle) * radius,
+          WORKER_RADIUS + 6,
+          world.width - WORKER_RADIUS - 6,
+        ),
+        y: clamp(
+          target.y + Math.sin(angle) * radius,
+          WORKER_RADIUS + 6,
+          world.height - WORKER_RADIUS - 6,
+        ),
+      };
+    }
+
     function updateWorkerTask(worker: Worker, target: Structure, dt: number) {
       const speed = worker.carrying ? 121 : 132;
-      ensureWorkerRoute(worker, target);
-      const nextWaypoint = advanceWorkerRoute(worker, target.x, target.y);
+      const approachPoint = getTaskApproachPoint(worker, target);
+      ensureWorkerRoute(worker, target, approachPoint);
+      const nextWaypoint = advanceWorkerRoute(worker, approachPoint.x, approachPoint.y);
       steerTo(worker, nextWaypoint.x, nextWaypoint.y, speed, dt);
 
-      if (distance(worker.x, worker.y, target.x, target.y) > target.size + 10) {
+      const nearTarget = distance(worker.x, worker.y, target.x, target.y) <= target.size + 12;
+      const nearApproach = distance(worker.x, worker.y, approachPoint.x, approachPoint.y) <= 14;
+      if (!nearTarget && !nearApproach) {
         return;
       }
 
@@ -2448,6 +2776,9 @@ export default function PowerGridBackground() {
       const deadWorkerIds = new Set<number>();
       const desiredWorkers = currentStrategy.desiredWorkers;
       const loadFactor = getLoadCycleValue();
+      activeWorkerTrafficField = buildWorkerTrafficField(world.workers);
+      const claims = getClaimCounts();
+      const structureCrowding = buildStructureCrowdingMap(world.workers, world.structures);
       const workerSpatialGrid = buildWorkerSpatialGrid(world.workers);
 
       for (let workerIndex = 0; workerIndex < world.workers.length; workerIndex += 1) {
@@ -2467,6 +2798,9 @@ export default function PowerGridBackground() {
           (1 + Math.max(0, populationPressure) * 1.6) *
           (worker.malfunctionTimer > 0 ? 1.8 : 1);
         if (Math.random() < failureRate * dt) {
+          if (worker.task) {
+            applyTaskClaimDelta(claims, worker.task, -1);
+          }
           deadWorkerIds.add(worker.id);
           removeWorkerWithBurst(worker);
           continue;
@@ -2480,13 +2814,14 @@ export default function PowerGridBackground() {
           worker.task &&
           (!findNode(worker.task.sourceId) || !findNode(worker.task.targetId))
         ) {
+          applyTaskClaimDelta(claims, worker.task, -1);
           worker.task = null;
           worker.carrying = null;
           clearWorkerRoute(worker);
         }
 
         if (!worker.task && worker.malfunctionTimer <= 0) {
-          assignTask(worker);
+          assignTask(worker, claims, structureCrowding);
         }
 
         applyFlocking(worker, dt, workerSpatialGrid, workerIndex);
@@ -2536,6 +2871,7 @@ export default function PowerGridBackground() {
           }
         }
 
+        applyLocalWorkerAvoidance(worker, dt, workerSpatialGrid, workerIndex);
         applyObstacleAvoidance(worker, dt);
 
         const edgeForceX =
@@ -2574,6 +2910,9 @@ export default function PowerGridBackground() {
       if (deadWorkerIds.size > 0) {
         world.workers = world.workers.filter((worker) => !deadWorkerIds.has(worker.id));
       }
+
+      resolveWorkerCrowding(world.workers, deadWorkerIds);
+      activeWorkerTrafficField = null;
     }
 
     function drawGrid() {
