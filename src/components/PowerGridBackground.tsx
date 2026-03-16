@@ -265,31 +265,6 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
     ];
   }
 
-  if (panelRects.length === 1) {
-    const [panelRect] = panelRects;
-    const topInset = headerRect
-      ? headerRect.bottom + hallwayToChromeGap + hallwayToPanelGap
-      : clamp(viewportHeight * 0.18, 88, 168);
-    const bottomInset = footerRect
-      ? footerRect.top - hallwayToChromeGap - hallwayToPanelGap
-      : viewportHeight - clamp(viewportHeight * 0.16, 84, 156);
-    const clippedTop = clamp(Math.max(panelRect.top, topInset), 56, viewportHeight - 180);
-    const clippedBottom = clamp(
-      Math.min(panelRect.bottom, bottomInset),
-      clippedTop + 140,
-      viewportHeight - 56,
-    );
-
-    panelRects = [
-      createRect(
-        panelRect.left,
-        clippedTop,
-        panelRect.width,
-        clippedBottom - clippedTop,
-      ),
-    ];
-  }
-
   const topPanelRect = panelRects[0];
   const bottomPanelRect = panelRects[panelRects.length - 1];
   const topHallwayMin = headerRect ? headerRect.bottom + hallwayToChromeGap : 64;
