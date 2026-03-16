@@ -58,6 +58,9 @@ type Worker = {
   task: Task | null;
   wanderSeed: number;
   wobble: number;
+  route: RoutePoint[];
+  routeIndex: number;
+  routeKey: string | null;
 };
 
 type Ripple = {
@@ -102,6 +105,19 @@ type FixedMapLayout = {
   leftLaneX: number;
   centerLaneX: number;
   rightLaneX: number;
+};
+
+type RoutePoint = {
+  x: number;
+  y: number;
+};
+
+type NavigationGrid = {
+  cellSize: number;
+  cols: number;
+  rows: number;
+  blocked: boolean[];
+  version: number;
 };
 
 const COLORS = {
@@ -157,68 +173,80 @@ function createRect(left: number, top: number, width: number, height: number): O
   };
 }
 
+function measureElementRect(element: Element | null): ObstacleRect | null {
+  if (!(element instanceof HTMLElement)) {
+    return null;
+  }
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+
+  return createRect(rect.left, rect.top, rect.width, rect.height);
+}
+
 function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   const viewportWidth = Math.max(width, 360);
   const viewportHeight = Math.max(height, 560);
-  const sidePadding = viewportWidth < 900 ? 18 : clamp(viewportWidth * 0.03, 22, 42);
-  const contentWidth = Math.min(viewportWidth - sidePadding * 2, 1080);
-  const contentLeft = (viewportWidth - contentWidth) * 0.5;
-  const contentRight = contentLeft + contentWidth;
-  const headerHeight = clamp(viewportHeight * 0.1, 72, 96);
-  const headerRect = createRect(
-    Math.max(12, contentLeft - 12),
-    10,
-    Math.min(viewportWidth - 24, contentWidth + 24),
-    headerHeight,
-  );
 
-  const availableTop = headerRect.bottom + 18;
-  const availableBottom = viewportHeight - 28;
-  const rowGap = clamp(viewportHeight * 0.02, 16, 26);
-  const rowHeight = Math.max(
-    92,
-    (availableBottom - availableTop - rowGap * 3) / 4,
-  );
-  const panelSpecs = viewportWidth < 900
-    ? [
-        { align: 'center' as const, width: Math.min(contentWidth * 0.94, viewportWidth - sidePadding * 2), factor: 0.54 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.96, viewportWidth - sidePadding * 2), factor: 0.58 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.96, viewportWidth - sidePadding * 2), factor: 0.58 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.94, viewportWidth - sidePadding * 2), factor: 0.54 },
-      ]
-    : [
-        { align: 'center' as const, width: Math.min(contentWidth * 0.68, 730), factor: 0.54 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.78, 840), factor: 0.62 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.78, 840), factor: 0.62 },
-        { align: 'center' as const, width: Math.min(contentWidth * 0.68, 730), factor: 0.54 },
-      ];
+  const headerRect = measureElementRect(document.querySelector('.site-nav'));
+  const footerRect = measureElementRect(document.querySelector('.site-footer'));
 
-  const panelRects = panelSpecs.map((spec, index) => {
-    const panelHeight = clamp(rowHeight * spec.factor, 92, rowHeight - 8);
-    const top = availableTop + index * (rowHeight + rowGap) + (rowHeight - panelHeight) * 0.5;
-    const left = spec.align === 'left'
-      ? contentLeft
-      : spec.align === 'right'
-        ? contentRight - spec.width
-        : (viewportWidth - spec.width) * 0.5;
+  let panelRects = Array.from(document.querySelectorAll<HTMLElement>('.panel-shell'))
+    .map((element) => measureElementRect(element))
+    .filter((rect): rect is ObstacleRect => rect !== null)
+    .sort((first, second) => first.top - second.top);
 
-    return createRect(left, top, spec.width, panelHeight);
-  });
+  if (panelRects.length === 0) {
+    const fallbackWidth = Math.min(viewportWidth - 40, 920);
+    const fallbackLeft = (viewportWidth - fallbackWidth) * 0.5;
+    const fallbackGap = (viewportHeight * 0.2) / 3;
+    const fallbackHeight = (viewportHeight - fallbackGap * 3) / 4;
+    panelRects = Array.from({ length: 4 }, (_, index) => (
+      createRect(
+        fallbackLeft,
+        index * (fallbackHeight + fallbackGap),
+        fallbackWidth,
+        fallbackHeight,
+      )
+    ));
+  }
 
   const hallwayY = [
-    clamp((headerRect.bottom + panelRects[0].top) * 0.5, 72, viewportHeight - 72),
-    clamp((panelRects[0].bottom + panelRects[1].top) * 0.5, 72, viewportHeight - 72),
-    clamp((panelRects[1].bottom + panelRects[2].top) * 0.5, 72, viewportHeight - 72),
-    clamp((panelRects[2].bottom + panelRects[3].top) * 0.5, 72, viewportHeight - 72),
+    clamp(
+      headerRect
+        ? (headerRect.bottom + panelRects[0].top) * 0.5
+        : panelRects[0].top * 0.5,
+      72,
+      viewportHeight - 72,
+    ),
+    ...panelRects.slice(0, -1).map((rect, index) => clamp(
+      (rect.bottom + panelRects[index + 1].top) * 0.5,
+      72,
+      viewportHeight - 72,
+    )),
+  ].slice(0, 4);
+
+  const leftEdge = Math.min(...panelRects.map((rect) => rect.left));
+  const rightEdge = Math.max(...panelRects.map((rect) => rect.right));
+  const obstacles = [
+    ...(headerRect ? [headerRect] : []),
+    ...panelRects,
+    ...(footerRect ? [footerRect] : []),
   ];
 
   return {
-    obstacles: [headerRect, ...panelRects],
+    obstacles,
     panelRects,
     hallwayY,
-    leftLaneX: clamp(contentLeft * 0.5, 40, viewportWidth - 40),
+    leftLaneX: clamp(leftEdge * 0.5, 40, viewportWidth - 40),
     centerLaneX: clamp(viewportWidth * 0.5, 56, viewportWidth - 56),
-    rightLaneX: clamp(contentRight + (viewportWidth - contentRight) * 0.5, 40, viewportWidth - 40),
+    rightLaneX: clamp(
+      rightEdge + (viewportWidth - rightEdge) * 0.5,
+      40,
+      viewportWidth - 40,
+    ),
   };
 }
 
@@ -234,6 +262,9 @@ function createWorker(id: number, x: number, y: number): Worker {
     task: null,
     wanderSeed: Math.random() * Math.PI * 2,
     wobble: Math.random() * 1000,
+    route: [],
+    routeIndex: 0,
+    routeKey: null,
   };
 }
 
@@ -281,6 +312,9 @@ export default function PowerGridBackground() {
   const resetWorldRef = useRef<() => void>(() => undefined);
   const obstacleRectsRef = useRef<ObstacleRect[]>([]);
   const mapLayoutRef = useRef<FixedMapLayout | null>(null);
+  const navigationGridRef = useRef<NavigationGrid | null>(null);
+  const navigationVersionRef = useRef(0);
+  const pathCacheRef = useRef(new Map<string, RoutePoint[]>());
   const worldRef = useRef<World>({
     width: 0,
     height: 0,
@@ -347,11 +381,239 @@ export default function PowerGridBackground() {
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
+    function clearWorkerRoute(worker: Worker) {
+      worker.route = [];
+      worker.routeIndex = 0;
+      worker.routeKey = null;
+    }
+
+    function buildNavigationGrid(
+      width: number,
+      height: number,
+      obstacles: ObstacleRect[],
+      version: number,
+    ): NavigationGrid {
+      const cellSize = 28;
+      const cols = Math.max(1, Math.ceil(width / cellSize));
+      const rows = Math.max(1, Math.ceil(height / cellSize));
+      const blocked = new Array(cols * rows).fill(false);
+      const padding = WORKER_RADIUS + 6;
+
+      obstacles.forEach((rect) => {
+        const minCol = clamp(Math.floor((rect.left - padding) / cellSize), 0, cols - 1);
+        const maxCol = clamp(Math.floor((rect.right + padding) / cellSize), 0, cols - 1);
+        const minRow = clamp(Math.floor((rect.top - padding) / cellSize), 0, rows - 1);
+        const maxRow = clamp(Math.floor((rect.bottom + padding) / cellSize), 0, rows - 1);
+
+        for (let row = minRow; row <= maxRow; row += 1) {
+          for (let col = minCol; col <= maxCol; col += 1) {
+            blocked[row * cols + col] = true;
+          }
+        }
+      });
+
+      return { cellSize, cols, rows, blocked, version };
+    }
+
+    function getCellIndex(grid: NavigationGrid, col: number, row: number) {
+      return row * grid.cols + col;
+    }
+
+    function isCellBlocked(grid: NavigationGrid, col: number, row: number) {
+      if (col < 0 || col >= grid.cols || row < 0 || row >= grid.rows) {
+        return true;
+      }
+
+      return grid.blocked[getCellIndex(grid, col, row)];
+    }
+
+    function pointToCell(grid: NavigationGrid, x: number, y: number) {
+      return {
+        col: clamp(Math.floor(x / grid.cellSize), 0, grid.cols - 1),
+        row: clamp(Math.floor(y / grid.cellSize), 0, grid.rows - 1),
+      };
+    }
+
+    function cellToPoint(grid: NavigationGrid, col: number, row: number): RoutePoint {
+      return {
+        x: clamp(col * grid.cellSize + grid.cellSize * 0.5, 12, worldRef.current.width - 12),
+        y: clamp(row * grid.cellSize + grid.cellSize * 0.5, 12, worldRef.current.height - 12),
+      };
+    }
+
+    function findNearestOpenCell(grid: NavigationGrid, startCol: number, startRow: number) {
+      if (!isCellBlocked(grid, startCol, startRow)) {
+        return { col: startCol, row: startRow };
+      }
+
+      for (let radius = 1; radius <= Math.max(grid.cols, grid.rows); radius += 1) {
+        for (let row = Math.max(0, startRow - radius); row <= Math.min(grid.rows - 1, startRow + radius); row += 1) {
+          for (let col = Math.max(0, startCol - radius); col <= Math.min(grid.cols - 1, startCol + radius); col += 1) {
+            const onBorder =
+              row === startRow - radius ||
+              row === startRow + radius ||
+              col === startCol - radius ||
+              col === startCol + radius;
+
+            if (!onBorder || isCellBlocked(grid, col, row)) {
+              continue;
+            }
+
+            return { col, row };
+          }
+        }
+      }
+
+      return null;
+    }
+
     function refreshMapLayout(width: number, height: number) {
       const layout = buildFixedMapLayout(width, height);
       mapLayoutRef.current = layout;
       obstacleRectsRef.current = layout.obstacles;
+      navigationVersionRef.current += 1;
+      navigationGridRef.current = buildNavigationGrid(
+        width,
+        height,
+        layout.obstacles,
+        navigationVersionRef.current,
+      );
+      pathCacheRef.current.clear();
       return layout;
+    }
+
+    function planPath(startX: number, startY: number, endX: number, endY: number): RoutePoint[] {
+      const grid = navigationGridRef.current;
+      if (!grid) {
+        return [{ x: endX, y: endY }];
+      }
+
+      const startCell = pointToCell(grid, startX, startY);
+      const goalCell = pointToCell(grid, endX, endY);
+      const start = findNearestOpenCell(grid, startCell.col, startCell.row);
+      const goal = findNearestOpenCell(grid, goalCell.col, goalCell.row);
+
+      if (!start || !goal) {
+        return [{ x: endX, y: endY }];
+      }
+
+      const cacheKey = `${grid.version}:${start.col},${start.row}:${goal.col},${goal.row}`;
+      const cachedPath = pathCacheRef.current.get(cacheKey);
+      if (cachedPath) {
+        return [...cachedPath, { x: endX, y: endY }];
+      }
+
+      const totalCells = grid.cols * grid.rows;
+      const gScore = new Array(totalCells).fill(Number.POSITIVE_INFINITY);
+      const fScore = new Array(totalCells).fill(Number.POSITIVE_INFINITY);
+      const cameFrom = new Array<number>(totalCells).fill(-1);
+      const openSet = new Set<number>();
+
+      const startIndex = getCellIndex(grid, start.col, start.row);
+      const goalIndex = getCellIndex(grid, goal.col, goal.row);
+      gScore[startIndex] = 0;
+      fScore[startIndex] = Math.hypot(goal.col - start.col, goal.row - start.row);
+      openSet.add(startIndex);
+
+      const neighborSteps = [
+        { dc: 1, dr: 0, cost: 1 },
+        { dc: -1, dr: 0, cost: 1 },
+        { dc: 0, dr: 1, cost: 1 },
+        { dc: 0, dr: -1, cost: 1 },
+        { dc: 1, dr: 1, cost: Math.SQRT2 },
+        { dc: -1, dr: 1, cost: Math.SQRT2 },
+        { dc: 1, dr: -1, cost: Math.SQRT2 },
+        { dc: -1, dr: -1, cost: Math.SQRT2 },
+      ];
+
+      while (openSet.size > 0) {
+        let currentIndex = -1;
+        let currentScore = Number.POSITIVE_INFINITY;
+
+        openSet.forEach((candidate) => {
+          if (fScore[candidate] < currentScore) {
+            currentScore = fScore[candidate];
+            currentIndex = candidate;
+          }
+        });
+
+        if (currentIndex === goalIndex) {
+          const pathCells: RoutePoint[] = [];
+          let traceIndex = currentIndex;
+
+          while (traceIndex !== -1) {
+            const col = traceIndex % grid.cols;
+            const row = Math.floor(traceIndex / grid.cols);
+            pathCells.push(cellToPoint(grid, col, row));
+            traceIndex = cameFrom[traceIndex];
+          }
+
+          pathCells.reverse();
+          if (pathCells.length > 0) {
+            pathCells.shift();
+          }
+
+          pathCacheRef.current.set(cacheKey, pathCells);
+          return [...pathCells, { x: endX, y: endY }];
+        }
+
+        openSet.delete(currentIndex);
+
+        const currentCol = currentIndex % grid.cols;
+        const currentRow = Math.floor(currentIndex / grid.cols);
+
+        neighborSteps.forEach(({ dc, dr, cost }) => {
+          const nextCol = currentCol + dc;
+          const nextRow = currentRow + dr;
+
+          if (isCellBlocked(grid, nextCol, nextRow)) {
+            return;
+          }
+
+          if (
+            dc !== 0 &&
+            dr !== 0 &&
+            (isCellBlocked(grid, currentCol + dc, currentRow) ||
+              isCellBlocked(grid, currentCol, currentRow + dr))
+          ) {
+            return;
+          }
+
+          const neighborIndex = getCellIndex(grid, nextCol, nextRow);
+          const tentativeScore = gScore[currentIndex] + cost;
+
+          if (tentativeScore >= gScore[neighborIndex]) {
+            return;
+          }
+
+          cameFrom[neighborIndex] = currentIndex;
+          gScore[neighborIndex] = tentativeScore;
+          fScore[neighborIndex] =
+            tentativeScore + Math.hypot(goal.col - nextCol, goal.row - nextRow);
+          openSet.add(neighborIndex);
+        });
+      }
+
+      return [{ x: endX, y: endY }];
+    }
+
+    function ensureWorkerRoute(worker: Worker, target: Structure) {
+      const nextRouteKey = worker.task
+        ? `${worker.task.type}:${worker.task.phase}:${worker.task.sourceId}:${worker.task.targetId}`
+        : null;
+
+      if (!nextRouteKey) {
+        clearWorkerRoute(worker);
+        return;
+      }
+
+      if (worker.routeKey === nextRouteKey && worker.route.length > 0) {
+        return;
+      }
+
+      worker.route = planPath(worker.x, worker.y, target.x, target.y);
+      worker.routeIndex = 0;
+      worker.routeKey = nextRouteKey;
     }
 
     function isPointBlocked(x: number, y: number, padding = 0) {
@@ -875,6 +1137,7 @@ export default function PowerGridBackground() {
       });
 
       worker.task = chosen?.task ?? null;
+      clearWorkerRoute(worker);
     }
 
     function steerTo(worker: Worker, targetX: number, targetY: number, speed: number, dt: number) {
@@ -937,7 +1200,19 @@ export default function PowerGridBackground() {
 
     function updateWorkerTask(worker: Worker, target: Structure, dt: number) {
       const speed = worker.carrying ? 84 : 92;
-      steerTo(worker, target.x, target.y, speed, dt);
+      ensureWorkerRoute(worker, target);
+
+      while (worker.routeIndex < worker.route.length - 1) {
+        const waypoint = worker.route[worker.routeIndex];
+        if (!waypoint || distance(worker.x, worker.y, waypoint.x, waypoint.y) > 18) {
+          break;
+        }
+
+        worker.routeIndex += 1;
+      }
+
+      const nextWaypoint = worker.route[worker.routeIndex] ?? { x: target.x, y: target.y };
+      steerTo(worker, nextWaypoint.x, nextWaypoint.y, speed, dt);
 
       if (distance(worker.x, worker.y, target.x, target.y) > target.size + 10) {
         return;
@@ -951,6 +1226,7 @@ export default function PowerGridBackground() {
         if (worker.task.type === 'fuel-generator') {
           worker.carrying = 'coal';
           worker.task.phase = 'deliver';
+          clearWorkerRoute(worker);
           addRipple(target.x, target.y, COLORS.lime);
           return;
         }
@@ -959,6 +1235,7 @@ export default function PowerGridBackground() {
           target.outputCells -= 1;
           worker.carrying = 'cell';
           worker.task.phase = 'deliver';
+          clearWorkerRoute(worker);
           addRipple(target.x, target.y, COLORS.green);
           return;
         }
@@ -967,12 +1244,14 @@ export default function PowerGridBackground() {
           target.charge -= 1;
           worker.carrying = 'cell';
           worker.task.phase = 'deliver';
+          clearWorkerRoute(worker);
           addRipple(target.x, target.y, COLORS.green);
           return;
         }
 
         worker.task = null;
         worker.carrying = null;
+        clearWorkerRoute(worker);
         return;
       }
 
@@ -994,6 +1273,7 @@ export default function PowerGridBackground() {
       addRipple(target.x, target.y, COLORS.green);
       worker.task = null;
       worker.carrying = null;
+      clearWorkerRoute(worker);
     }
 
     function updateStructures(dt: number) {
@@ -1043,6 +1323,7 @@ export default function PowerGridBackground() {
         ) {
           worker.task = null;
           worker.carrying = null;
+          clearWorkerRoute(worker);
         }
 
         if (!worker.task) {
@@ -1364,36 +1645,11 @@ export default function PowerGridBackground() {
       });
     }
 
-    function drawPanelWindows() {
-      const layout = mapLayoutRef.current;
-      if (!layout) {
-        return;
-      }
-
-      layout.panelRects.forEach((rect) => {
-        const x = Math.round(rect.left);
-        const y = Math.round(rect.top);
-        const width = Math.round(rect.width);
-        const height = Math.round(rect.height);
-
-        ctx.fillStyle = 'rgba(245, 245, 245, 0.88)';
-        ctx.fillRect(x, y, width, height);
-
-        ctx.strokeStyle = 'rgba(66, 66, 66, 0.08)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
-        ctx.strokeRect(x + 1.5, y + 1.5, width - 3, height - 3);
-      });
-    }
-
     function drawScene() {
       const world = worldRef.current;
       ctx.clearRect(0, 0, world.width, world.height);
       ctx.fillStyle = COLORS.paper;
       ctx.fillRect(0, 0, world.width, world.height);
-      drawPanelWindows();
 
       ctx.save();
       clipToMap();

@@ -10,6 +10,7 @@ export interface Props {
 
 const { title, description = 'Personal website and portfolio' } = Astro.props;
 const year = new Date().getFullYear();
+const isHomePage = Astro.url.pathname === '/';
 ---
 
 <!DOCTYPE html>
@@ -22,7 +23,7 @@ const year = new Date().getFullYear();
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
   </head>
-  <body>
+  <body class={isHomePage ? 'is-homepage' : undefined}>
     <PowerGridBackground client:load />
 
     <div class="site-root">
@@ -56,16 +57,17 @@ const year = new Date().getFullYear();
     position: relative;
     z-index: 2;
     min-height: 100vh;
-    padding: 0 var(--spacing-lg) var(--spacing-2xl);
+    padding: 0 0 var(--spacing-2xl);
   }
 
   .site-nav {
     position: sticky;
     top: 0;
     z-index: 30;
-    max-width: 1080px;
-    margin: 0 auto;
-    padding: 1.2rem 0 1rem;
+    width: 100%;
+    margin: 0;
+    padding: 1.2rem var(--spacing-lg) 1rem;
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -139,14 +141,24 @@ const year = new Date().getFullYear();
   .site-footer {
     position: relative;
     z-index: 2;
-    max-width: 1080px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .page-main {
+    max-width: 1400px;
     margin: 0 auto;
+    padding: 0 var(--spacing-lg);
   }
 
   .site-footer {
-    padding: 0.5rem 0 1rem;
+    padding: 0.5rem var(--spacing-lg) 1rem;
     font-size: 0.8rem;
     color: var(--color-text-tertiary);
+  }
+
+  .site-footer p {
+    margin: 0;
   }
 
   @media (max-width: 640px) {
