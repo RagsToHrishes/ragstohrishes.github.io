@@ -211,6 +211,10 @@ const WORKER_MIN_SEPARATION = WORKER_RADIUS * 2 + 4;
 const LOCAL_AVOIDANCE_RADIUS = 26;
 const LOCAL_AVOIDANCE_LOOKAHEAD = 0.16;
 const LOCAL_AVOIDANCE_MAX_NEIGHBORS = 18;
+const LOCAL_AVOIDANCE_MAX_FORCE = 210;
+const LOCAL_AVOIDANCE_PUSH = 130;
+const LOCAL_AVOIDANCE_OVERLAP_PUSH = 36;
+const LOCAL_AVOIDANCE_SIDE_SLIP = 18;
 const STRUCTURE_PADDING = 22;
 const OBSTACLE_REPULSION_RANGE = 34;
 const MAX_GENERATOR_OUTPUT = 5;
@@ -226,6 +230,8 @@ const HISTORY_LENGTH = 24;
 const NAVIGATION_CELL_SIZE = 10;
 const FLOCKING_RADIUS = 72;
 const FLOCKING_CELL_SIZE = FLOCKING_RADIUS;
+const GOLDEN_ANGLE = 2.399963229728653;
+const TRAFFIC_PENALTY_SCALE = 2.8;
 const PATH_NEIGHBOR_STEPS = [
   { dc: 1, dr: 0, cost: 1 },
   { dc: -1, dr: 0, cost: 1 },
@@ -1317,7 +1323,7 @@ export default function PowerGridBackground() {
 
           const trafficPenalty =
             useTrafficAwareRouting && neighborIndex !== goalIndex
-          ? (activeWorkerTrafficField?.[neighborIndex] ?? 0) * 2.8
+              ? (activeWorkerTrafficField?.[neighborIndex] ?? 0) * TRAFFIC_PENALTY_SCALE
               : 0;
           const tentativeScore = gScore[currentIndex] + cost + trafficPenalty;
 
@@ -2005,28 +2011,26 @@ export default function PowerGridBackground() {
 
     function buildStructureCrowdingMap(workers: Worker[], structures: Structure[]) {
       const crowding = new Map<number, number>();
-
-      workers.forEach((worker) => {
-        let nearest: Structure | null = null;
+      for (let workerIndex = 0; workerIndex < workers.length; workerIndex += 1) {
+        const worker = workers[workerIndex];
+        let nearestId = -1;
         let nearestDistance = Number.POSITIVE_INFINITY;
 
-        structures.forEach((node) => {
+        for (let structureIndex = 0; structureIndex < structures.length; structureIndex += 1) {
+          const node = structures[structureIndex];
           const nodeDistance = distance(worker.x, worker.y, node.x, node.y);
           if (nodeDistance > node.size + 68 || nodeDistance >= nearestDistance) {
-            return;
+            continue;
           }
 
-          nearest = node;
+          nearestId = node.id;
           nearestDistance = nodeDistance;
-        });
-
-        if (!nearest) {
-          return;
         }
 
-        const nearestNode = nearest as Structure;
-        crowding.set(nearestNode.id, (crowding.get(nearestNode.id) || 0) + 1);
-      });
+        if (nearestId !== -1) {
+          crowding.set(nearestId, (crowding.get(nearestId) || 0) + 1);
+        }
+      }
 
       return crowding;
     }
@@ -2323,6 +2327,30 @@ export default function PowerGridBackground() {
       grid.rows[workerIndex] = nextRow;
     }
 
+    function forEachNearbyWorkerIndex(
+      workerSpatialGrid: WorkerSpatialGrid,
+      workerIndex: number,
+      callback: (otherIndex: number) => boolean | void,
+    ) {
+      const workerCol = workerSpatialGrid.cols[workerIndex];
+      const workerRow = workerSpatialGrid.rows[workerIndex];
+
+      for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
+        for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
+          const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
+          if (!bucket) {
+            continue;
+          }
+
+          for (const otherIndex of bucket) {
+            if (callback(otherIndex)) {
+              return;
+            }
+          }
+        }
+      }
+    }
+
     function buildWorkerTrafficField(workers: Worker[]): Float32Array | null {
       const grid = navigationGridRef.current;
       if (!grid) {
@@ -2366,56 +2394,44 @@ export default function PowerGridBackground() {
             continue;
           }
 
-          const workerCol = workerSpatialGrid.cols[workerIndex];
-          const workerRow = workerSpatialGrid.rows[workerIndex];
-
-          for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
-            for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
-              const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
-              if (!bucket) {
-                continue;
-              }
-
-              bucket.forEach((otherIndex) => {
-                if (otherIndex <= workerIndex) {
-                  return;
-                }
-
-                const other = workers[otherIndex];
-                if (deadWorkerIds.has(other.id)) {
-                  return;
-                }
-
-                const dx = other.x - worker.x;
-                const dy = other.y - worker.y;
-                const dist = Math.hypot(dx, dy);
-
-                if (dist >= WORKER_MIN_SEPARATION) {
-                  return;
-                }
-
-                const safeDist = dist || 0.001;
-                const overlap = WORKER_MIN_SEPARATION - safeDist;
-                const nx = dx / safeDist;
-                const ny = dy / safeDist;
-                const pushX = nx * overlap * 0.5;
-                const pushY = ny * overlap * 0.5;
-
-                worker.x -= pushX;
-                worker.y -= pushY;
-                other.x += pushX;
-                other.y += pushY;
-
-                worker.vx -= nx * overlap * 2.4;
-                worker.vy -= ny * overlap * 2.4;
-                other.vx += nx * overlap * 2.4;
-                other.vy += ny * overlap * 2.4;
-
-                constrainPointToMap(worker, WORKER_RADIUS);
-                constrainPointToMap(other, WORKER_RADIUS);
-              });
+          forEachNearbyWorkerIndex(workerSpatialGrid, workerIndex, (otherIndex) => {
+            if (otherIndex <= workerIndex) {
+              return false;
             }
-          }
+
+            const other = workers[otherIndex];
+            if (deadWorkerIds.has(other.id)) {
+              return false;
+            }
+
+            const dx = other.x - worker.x;
+            const dy = other.y - worker.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist >= WORKER_MIN_SEPARATION) {
+              return false;
+            }
+
+            const safeDist = dist || 0.001;
+            const overlap = WORKER_MIN_SEPARATION - safeDist;
+            const nx = dx / safeDist;
+            const ny = dy / safeDist;
+            const pushX = nx * overlap * 0.5;
+            const pushY = ny * overlap * 0.5;
+
+            worker.x -= pushX;
+            worker.y -= pushY;
+            other.x += pushX;
+            other.y += pushY;
+
+            worker.vx -= nx * overlap * 2.4;
+            worker.vy -= ny * overlap * 2.4;
+            other.vx += nx * overlap * 2.4;
+            other.vy += ny * overlap * 2.4;
+
+            constrainPointToMap(worker, WORKER_RADIUS);
+            constrainPointToMap(other, WORKER_RADIUS);
+            return false;
+          });
         }
       }
     }
@@ -2436,34 +2452,14 @@ export default function PowerGridBackground() {
       let neighbors = 0;
       const stride = performanceProfile.flockingNeighborStride;
       const strideOffset = worker.id % stride;
-      const candidateIndices: number[] = [];
-      const workerCol = workerSpatialGrid.cols[workerIndex];
-      const workerRow = workerSpatialGrid.rows[workerIndex];
-
-      for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
-        for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
-          const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
-          if (!bucket) {
-            continue;
-          }
-
-          bucket.forEach((index) => {
-            candidateIndices.push(index);
-          });
-        }
-      }
-
-      candidateIndices.sort((first, second) => first - second);
-
-      for (let candidateIndex = 0; candidateIndex < candidateIndices.length; candidateIndex += 1) {
-        const index = candidateIndices[candidateIndex];
+      forEachNearbyWorkerIndex(workerSpatialGrid, workerIndex, (index) => {
         const other = world.workers[index];
         if (other.id === worker.id) {
-          continue;
+          return false;
         }
 
         if (stride > 1 && index % stride !== strideOffset) {
-          continue;
+          return false;
         }
 
         const dx = worker.x - other.x;
@@ -2471,7 +2467,7 @@ export default function PowerGridBackground() {
         const dist = Math.hypot(dx, dy);
 
         if (dist <= 0 || dist > FLOCKING_RADIUS) {
-          continue;
+          return false;
         }
 
         neighbors += 1;
@@ -2483,9 +2479,10 @@ export default function PowerGridBackground() {
         cohesionX += other.x;
         cohesionY += other.y;
         if (neighbors >= performanceProfile.maxFlockingNeighbors) {
-          break;
+          return true;
         }
-      }
+        return false;
+      });
 
       if (neighbors > 0) {
         alignmentX /= neighbors;
@@ -2509,8 +2506,6 @@ export default function PowerGridBackground() {
       workerIndex: number,
     ) {
       const world = worldRef.current;
-      const workerCol = workerSpatialGrid.cols[workerIndex];
-      const workerRow = workerSpatialGrid.rows[workerIndex];
       let avoidX = 0;
       let avoidY = 0;
       let neighborsChecked = 0;
@@ -2519,66 +2514,50 @@ export default function PowerGridBackground() {
       const projectedWorkerY = worker.y + worker.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
       const minGap = WORKER_MIN_SEPARATION + 2;
 
-      for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
-        for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
-          const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
-          if (!bucket) {
-            continue;
-          }
-
-          bucket.forEach((index) => {
-            if (index === workerIndex || neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
-              return;
-            }
-
-            const other = world.workers[index];
-            const projectedOtherX = other.x + other.vx * LOCAL_AVOIDANCE_LOOKAHEAD;
-            const projectedOtherY = other.y + other.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
-            let dx = projectedWorkerX - projectedOtherX;
-            let dy = projectedWorkerY - projectedOtherY;
-            let dist = Math.hypot(dx, dy);
-            if (dist <= 0.0001) {
-              // Deterministic fallback avoids unstable jitter at identical positions.
-              const fallbackAngle = (worker.id - other.id) * 2.399963229728653;
-              dx = Math.cos(fallbackAngle);
-              dy = Math.sin(fallbackAngle);
-              dist = 1;
-            }
-
-            if (dist > LOCAL_AVOIDANCE_RADIUS) {
-              return;
-            }
-
-            neighborsChecked += 1;
-            const closeness = 1 - dist / LOCAL_AVOIDANCE_RADIUS;
-            const closeness2 = closeness * closeness;
-            const nx = dx / dist;
-            const ny = dy / dist;
-            const side = worker.id < other.id ? 1 : -1;
-
-            avoidX += nx * (130 * closeness2);
-            avoidY += ny * (130 * closeness2);
-
-            if (dist < minGap) {
-              const overlap = minGap - dist;
-              avoidX += nx * overlap * 36;
-              avoidY += ny * overlap * 36;
-            }
-
-            // Side-slip term reduces head-on deadlocks when paths intersect.
-            avoidX += -ny * side * (18 * closeness2);
-            avoidY += nx * side * (18 * closeness2);
-          });
-
-          if (neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
-            break;
-          }
+      forEachNearbyWorkerIndex(workerSpatialGrid, workerIndex, (index) => {
+        if (index === workerIndex || neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
+          return neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS;
         }
 
-        if (neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS) {
-          break;
+        const other = world.workers[index];
+        const projectedOtherX = other.x + other.vx * LOCAL_AVOIDANCE_LOOKAHEAD;
+        const projectedOtherY = other.y + other.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
+        let dx = projectedWorkerX - projectedOtherX;
+        let dy = projectedWorkerY - projectedOtherY;
+        let dist = Math.hypot(dx, dy);
+        if (dist <= 0.0001) {
+          // Deterministic fallback avoids unstable jitter at identical positions.
+          const fallbackAngle = (worker.id - other.id) * GOLDEN_ANGLE;
+          dx = Math.cos(fallbackAngle);
+          dy = Math.sin(fallbackAngle);
+          dist = 1;
         }
-      }
+
+        if (dist > LOCAL_AVOIDANCE_RADIUS) {
+          return false;
+        }
+
+        neighborsChecked += 1;
+        const closeness = 1 - dist / LOCAL_AVOIDANCE_RADIUS;
+        const closeness2 = closeness * closeness;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const side = worker.id < other.id ? 1 : -1;
+
+        avoidX += nx * (LOCAL_AVOIDANCE_PUSH * closeness2);
+        avoidY += ny * (LOCAL_AVOIDANCE_PUSH * closeness2);
+
+        if (dist < minGap) {
+          const overlap = minGap - dist;
+          avoidX += nx * overlap * LOCAL_AVOIDANCE_OVERLAP_PUSH;
+          avoidY += ny * overlap * LOCAL_AVOIDANCE_OVERLAP_PUSH;
+        }
+
+        // Side-slip term reduces head-on deadlocks when paths intersect.
+        avoidX += -ny * side * (LOCAL_AVOIDANCE_SIDE_SLIP * closeness2);
+        avoidY += nx * side * (LOCAL_AVOIDANCE_SIDE_SLIP * closeness2);
+        return neighborsChecked >= LOCAL_AVOIDANCE_MAX_NEIGHBORS;
+      });
 
       if (neighborsChecked === 0) {
         return;
@@ -2586,8 +2565,7 @@ export default function PowerGridBackground() {
 
       const force = Math.hypot(avoidX, avoidY);
       if (force > 0) {
-        const maxForce = 210;
-        const scale = force > maxForce ? maxForce / force : 1;
+        const scale = force > LOCAL_AVOIDANCE_MAX_FORCE ? LOCAL_AVOIDANCE_MAX_FORCE / force : 1;
         worker.vx += avoidX * scale * dt;
         worker.vy += avoidY * scale * dt;
       }
@@ -2596,7 +2574,7 @@ export default function PowerGridBackground() {
     function getTaskApproachPoint(worker: Worker, target: Structure): RoutePoint {
       const world = worldRef.current;
       const phaseOffset = worker.task?.phase === 'deliver' ? Math.PI * 0.37 : 0;
-      const angle = worker.id * 2.399963229728653 + target.id * 0.61 + phaseOffset;
+      const angle = worker.id * GOLDEN_ANGLE + target.id * 0.61 + phaseOffset;
       const radius = target.size + (worker.carrying ? 22 : 18) + (worker.id % 3) * 2;
 
       return {
