@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 
-type StructureKind = 'coal' | 'generator' | 'battery' | 'lab';
-type Tool = StructureKind | 'erase';
+type StructureKind = 'coal' | 'generator' | 'battery' | 'lab' | 'factory';
 type ItemType = 'coal' | 'cell';
-type TaskType = 'fuel-generator' | 'charge-battery' | 'power-lab';
+type TaskType = 'fuel-generator' | 'charge-battery' | 'power-lab' | 'power-factory';
 
 type Task = {
   type: TaskType;
@@ -45,7 +44,13 @@ type LabNode = BaseStructure & {
   energy: number;
 };
 
-type Structure = CoalPatch | GeneratorNode | BatteryNode | LabNode;
+type FactoryNode = BaseStructure & {
+  kind: 'factory';
+  charge: number;
+  buildProgress: number;
+};
+
+type Structure = CoalPatch | GeneratorNode | BatteryNode | LabNode | FactoryNode;
 
 type Worker = {
   id: number;
@@ -62,6 +67,7 @@ type Worker = {
   routeIndex: number;
   routeKey: string | null;
   routeVersion: number;
+  malfunctionTimer: number;
 };
 
 type Ripple = {
@@ -82,12 +88,21 @@ type World = {
 
 type Metrics = {
   status: string;
+  powerPct: number;
+  cellsPct: number;
   workers: number;
-  coalPatches: number;
-  generators: number;
-  batteries: number;
-  labs: number;
-  storedCells: number;
+  workerCap: number;
+  malfunctioning: number;
+  factoryPct: number;
+  factoryCharge: number;
+  factoryProgress: number;
+};
+
+type GraphHistory = {
+  power: number[];
+  cells: number[];
+  workers: number[];
+  factory: number[];
 };
 
 type ObstacleRect = {
@@ -129,17 +144,17 @@ const COLORS = {
   softInk: 'rgba(66, 66, 66, 0.22)',
 };
 
-const TOOL_OPTIONS: Array<{ id: Tool; label: string; short: string }> = [
-  { id: 'coal', label: 'Coal patch', short: 'Coal' },
-  { id: 'generator', label: 'Generator', short: 'Gen' },
-  { id: 'battery', label: 'Battery', short: 'Cell' },
-  { id: 'lab', label: 'Lab', short: 'Lab' },
-  { id: 'erase', label: 'Clear nearby', short: 'Clear' },
-];
-
 const WORKER_RADIUS = 5;
 const STRUCTURE_PADDING = 22;
 const OBSTACLE_REPULSION_RANGE = 34;
+const MAX_GENERATOR_OUTPUT = 5;
+const WORKER_CAP = 50;
+const FACTORY_CHARGE_PER_CELL = 28;
+const FACTORY_POWER_DRAIN = 5.5;
+const FACTORY_BUILD_RATE = 6.5;
+const WORKER_MALFUNCTION_RATE = 0.008;
+const WORKER_FAILURE_RATE = 0.0012;
+const HISTORY_LENGTH = 24;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -277,7 +292,59 @@ function createWorker(id: number, x: number, y: number): Worker {
     routeIndex: 0,
     routeKey: null,
     routeVersion: 0,
+    malfunctionTimer: 0,
   };
+}
+
+function pushHistoryValue(series: number[], value: number) {
+  const next = [...series, clamp(value, 0, 100)];
+  return next.length > HISTORY_LENGTH ? next.slice(-HISTORY_LENGTH) : next;
+}
+
+function buildSparklinePath(values: number[], width = 112, height = 28) {
+  const series = values.length > 0 ? values : [0];
+  if (series.length === 1) {
+    const y = height - (series[0] / 100) * height;
+    return `M 0 ${y.toFixed(2)} L ${width} ${y.toFixed(2)}`;
+  }
+
+  return series
+    .map((value, index) => {
+      const x = (index / (series.length - 1)) * width;
+      const y = height - (value / 100) * height;
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
+    .join(' ');
+}
+
+type MiniGraphProps = {
+  label: string;
+  value: string;
+  detail: string;
+  values: number[];
+  color: string;
+};
+
+function MiniGraph({ label, value, detail, values, color }: MiniGraphProps) {
+  return (
+    <article className="sim-hotbar__graph">
+      <div className="sim-hotbar__graph-header">
+        <p className="sim-hotbar__graph-label">{label}</p>
+        <p className="sim-hotbar__graph-value">{value}</p>
+      </div>
+      <svg className="sim-hotbar__graph-svg" viewBox="0 0 112 28" preserveAspectRatio="none" aria-hidden="true">
+        <path
+          d={buildSparklinePath(values)}
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <p className="sim-hotbar__graph-detail">{detail}</p>
+    </article>
+  );
 }
 
 function deriveMetrics(world: World): Metrics {
@@ -285,43 +352,63 @@ function deriveMetrics(world: World): Metrics {
   const generators = world.structures.filter((node) => node.kind === 'generator') as GeneratorNode[];
   const batteries = world.structures.filter((node) => node.kind === 'battery') as BatteryNode[];
   const labs = world.structures.filter((node) => node.kind === 'lab') as LabNode[];
+  const factories = world.structures.filter((node) => node.kind === 'factory') as FactoryNode[];
   const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
   const totalCells =
     generators.reduce((sum, node) => sum + node.outputCells, 0) +
     batteries.reduce((sum, node) => sum + node.charge, 0);
   const totalLabEnergy = labs.reduce((sum, node) => sum + node.energy, 0);
+  const totalFactoryCharge = factories.reduce((sum, node) => sum + node.charge, 0);
+  const totalFactoryProgress = factories.reduce((sum, node) => sum + node.buildProgress, 0);
+  const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
+  const cellCapacity =
+    generators.length * MAX_GENERATOR_OUTPUT +
+    batteries.reduce((sum, node) => sum + node.capacity, 0);
+  const cellsPct = cellCapacity > 0 ? (totalCells / cellCapacity) * 100 : 0;
+  const fuelPct = generators.length > 0 ? (totalFuel / (generators.length * 100)) * 100 : 0;
+  const labPct = labs.length > 0 ? (totalLabEnergy / (labs.length * 100)) * 100 : 0;
+  const powerPct = fuelPct * 0.35 + cellsPct * 0.4 + labPct * 0.25;
+  const averageFactoryCharge = factories.length > 0 ? totalFactoryCharge / factories.length : 0;
+  const averageFactoryProgress = factories.length > 0 ? totalFactoryProgress / factories.length : 0;
+  const factoryPct = averageFactoryCharge * 0.55 + averageFactoryProgress * 0.45;
 
-  let status = 'Build a small grid';
-  if (coalPatches && generators.length && batteries.length && labs.length) {
+  let status = 'Booting grid';
+  if (coalPatches && generators.length && batteries.length && labs.length && factories.length) {
     status = 'Grid nominal';
     if (totalFuel < generators.length * 28) {
       status = 'Fuel low';
     } else if (totalCells < Math.max(2, batteries.length * 2)) {
       status = 'Balancing load';
+    } else if (world.workers.length < WORKER_CAP && averageFactoryCharge < 16) {
+      status = 'Factory starved';
+    } else if (malfunctioning > Math.max(2, Math.round(world.workers.length * 0.14))) {
+      status = 'Crew faults';
     } else if (totalLabEnergy < labs.length * 35) {
       status = 'Labs are draining';
     }
+  } else if (coalPatches && generators.length && batteries.length) {
+    status = 'Bring factory online';
   } else if (coalPatches && generators.length) {
-    status = 'Add storage and a lab';
+    status = 'Add storage';
   } else if (coalPatches) {
-    status = 'Drop a generator';
+    status = 'Waiting on generators';
   }
 
   return {
     status,
+    powerPct: Math.round(powerPct),
+    cellsPct: Math.round(cellsPct),
     workers: world.workers.length,
-    coalPatches,
-    generators: generators.length,
-    batteries: batteries.length,
-    labs: labs.length,
-    storedCells: totalCells,
+    workerCap: WORKER_CAP,
+    malfunctioning,
+    factoryPct: Math.round(factoryPct),
+    factoryCharge: Math.round(averageFactoryCharge),
+    factoryProgress: Math.round(averageFactoryProgress),
   };
 }
 
 export default function PowerGridBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const selectedToolRef = useRef<Tool>('generator');
-  const resetWorldRef = useRef<() => void>(() => undefined);
   const obstacleRectsRef = useRef<ObstacleRect[]>([]);
   const mapLayoutRef = useRef<FixedMapLayout | null>(null);
   const navigationGridRef = useRef<NavigationGrid | null>(null);
@@ -336,22 +423,25 @@ export default function PowerGridBackground() {
     ripples: [],
   });
 
-  const [selectedTool, setSelectedTool] = useState<Tool>('generator');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isMenuMinimized, setIsMenuMinimized] = useState(false);
   const [metrics, setMetrics] = useState<Metrics>({
-    status: 'Build a small grid',
+    status: 'Booting grid',
+    powerPct: 0,
+    cellsPct: 0,
     workers: 0,
-    coalPatches: 0,
-    generators: 0,
-    batteries: 0,
-    labs: 0,
-    storedCells: 0,
+    workerCap: WORKER_CAP,
+    malfunctioning: 0,
+    factoryPct: 0,
+    factoryCharge: 0,
+    factoryProgress: 0,
   });
-
-  useEffect(() => {
-    selectedToolRef.current = selectedTool;
-  }, [selectedTool]);
+  const [graphHistory, setGraphHistory] = useState<GraphHistory>({
+    power: [],
+    cells: [],
+    workers: [],
+    factory: [],
+  });
 
   useEffect(() => {
     if (!isHelpOpen) {
@@ -404,6 +494,20 @@ export default function PowerGridBackground() {
       worldRef.current.workers.forEach((worker) => {
         clearWorkerRoute(worker);
       });
+    }
+
+    function publishMetrics(world: World) {
+      const nextMetrics = deriveMetrics(world);
+      setMetrics(nextMetrics);
+      setGraphHistory((previous) => ({
+        power: pushHistoryValue(previous.power, nextMetrics.powerPct),
+        cells: pushHistoryValue(previous.cells, nextMetrics.cellsPct),
+        workers: pushHistoryValue(
+          previous.workers,
+          nextMetrics.workerCap > 0 ? (nextMetrics.workers / nextMetrics.workerCap) * 100 : 0,
+        ),
+        factory: pushHistoryValue(previous.factory, nextMetrics.factoryPct),
+      }));
     }
 
     function buildNavigationGrid(
@@ -641,15 +745,6 @@ export default function PowerGridBackground() {
       worker.routeVersion = currentRouteVersion;
     }
 
-    function isPointBlocked(x: number, y: number, padding = 0) {
-      return obstacleRectsRef.current.some((rect) => (
-        x > rect.left - padding &&
-        x < rect.right + padding &&
-        y > rect.top - padding &&
-        y < rect.bottom + padding
-      ));
-    }
-
     function pushPointOutOfObstacles(
       point: { x: number; y: number },
       padding: number,
@@ -723,6 +818,7 @@ export default function PowerGridBackground() {
       });
 
       clearAllWorkerRoutes();
+      publishMetrics(world);
     }
 
     function applyObstacleAvoidance(worker: Worker, dt: number) {
@@ -787,7 +883,7 @@ export default function PowerGridBackground() {
         kind,
         x,
         y,
-        size: kind === 'coal' ? 18 : 16,
+        size: kind === 'coal' || kind === 'factory' ? 18 : 16,
         placedByUser,
         pulse: 0,
       };
@@ -819,11 +915,51 @@ export default function PowerGridBackground() {
         };
       }
 
+      if (kind === 'factory') {
+        return {
+          ...base,
+          kind,
+          charge: 36,
+          buildProgress: 18,
+        };
+      }
+
       return {
         ...base,
         kind,
         energy: 56,
       };
+    }
+
+    function spawnWorkerNearFactory(factory: FactoryNode) {
+      const angle = Math.random() * Math.PI * 2;
+      const distanceFromFactory = 28 + Math.random() * 18;
+      const worker = createWorker(
+        nextId(),
+        factory.x + Math.cos(angle) * distanceFromFactory,
+        factory.y + Math.sin(angle) * distanceFromFactory,
+      );
+      constrainPointToMap(worker, WORKER_RADIUS);
+      worldRef.current.workers.push(worker);
+      addRipple(factory.x, factory.y, COLORS.green);
+    }
+
+    function triggerWorkerMalfunction(worker: Worker) {
+      if (worker.malfunctionTimer > 0) {
+        return;
+      }
+
+      worker.malfunctionTimer = 2.8 + Math.random() * 3.4;
+      worker.task = null;
+      worker.carrying = null;
+      clearWorkerRoute(worker);
+      addRipple(worker.x, worker.y, COLORS.lime);
+    }
+
+    function removeWorkerWithBurst(worker: Worker) {
+      addRipple(worker.x, worker.y, COLORS.ink);
+      addRipple(worker.x + 4, worker.y - 4, COLORS.lime);
+      addRipple(worker.x - 4, worker.y + 4, COLORS.ink);
     }
 
     function getDefaultLanes(width: number, height: number) {
@@ -868,6 +1004,11 @@ export default function PowerGridBackground() {
             x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
             y: clamp(bottomPanel.bottom - bottomInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
+          {
+            kind: 'factory',
+            x: clamp(lanes.centerLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(lanes.yPositions[0] ?? height * 0.5, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
         ];
 
         return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
@@ -896,6 +1037,7 @@ export default function PowerGridBackground() {
             y: hallwayY[0],
           },
           { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[0] },
+          { kind: 'factory', x: lanes.centerLaneX, y: clamp(height * 0.25, 96, height - 96) },
         ];
 
         return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
@@ -907,6 +1049,7 @@ export default function PowerGridBackground() {
           { kind: 'generator', x: lanes.rightLaneX, y: hallwayY[0] },
           { kind: 'battery', x: lanes.leftLaneX, y: hallwayY[1] },
           { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[1] },
+          { kind: 'factory', x: lanes.centerLaneX, y: clamp((hallwayY[0] + hallwayY[1]) * 0.5, 96, height - 96) },
         ];
 
         return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
@@ -919,6 +1062,7 @@ export default function PowerGridBackground() {
         { kind: 'generator', x: lanes.leftLaneX, y: hallwayY[1] },
         { kind: 'battery', x: lanes.leftLaneX, y: hallwayY[2] },
         { kind: 'lab', x: lanes.rightLaneX, y: hallwayY[2] },
+        { kind: 'factory', x: lanes.centerLaneX, y: hallwayY[1] },
       ];
 
       if (hallwayY[3] !== undefined) {
@@ -981,12 +1125,8 @@ export default function PowerGridBackground() {
         constrainPointToMap(worker, WORKER_RADIUS);
       });
 
-      setMetrics(deriveMetrics(world));
+      publishMetrics(world);
     }
-
-    resetWorldRef.current = () => {
-      resetWorld(true);
-    };
 
     function resizeWorld() {
       const world = worldRef.current;
@@ -1036,72 +1176,7 @@ export default function PowerGridBackground() {
         constrainPointToMap(worker, WORKER_RADIUS);
       });
       clearAllWorkerRoutes();
-    }
-
-    function placeStructure(kind: StructureKind, x: number, y: number) {
-      const world = worldRef.current;
-      refreshMapLayout(world.width, world.height);
-      const clampedX = clamp(x, 32, world.width - 32);
-      const clampedY = clamp(y, 32, world.height - 32);
-
-      if (isPointBlocked(clampedX, clampedY, STRUCTURE_PADDING)) {
-        addRipple(clampedX, clampedY, COLORS.ink);
-        return;
-      }
-
-      const tooClose = world.structures.some(
-        (node) => distance(node.x, node.y, clampedX, clampedY) < 46,
-      );
-
-      if (tooClose) {
-        addRipple(clampedX, clampedY, COLORS.ink);
-        return;
-      }
-
-      world.structures.push(createStructure(kind, clampedX, clampedY, true));
-      addRipple(clampedX, clampedY, COLORS.green);
-      setMetrics(deriveMetrics(world));
-    }
-
-    function eraseStructure(x: number, y: number) {
-      const world = worldRef.current;
-      let removed = false;
-      world.structures = world.structures.filter((node) => {
-        const shouldRemove =
-          node.placedByUser && distance(node.x, node.y, x, y) < 28;
-        if (shouldRemove) {
-          removed = true;
-        }
-        return !shouldRemove;
-      });
-
-      if (removed) {
-        addRipple(x, y, COLORS.ink);
-        world.workers.forEach((worker) => {
-          if (
-            worker.task &&
-            (!findNode(worker.task.sourceId) || !findNode(worker.task.targetId))
-          ) {
-            worker.task = null;
-            worker.carrying = null;
-          }
-        });
-        setMetrics(deriveMetrics(world));
-      }
-    }
-
-    function handleCanvasPointer(event: PointerEvent) {
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const tool = selectedToolRef.current;
-
-      if (tool === 'erase') {
-        eraseStructure(x, y);
-        return;
-      }
-
-      placeStructure(tool, x, y);
+      publishMetrics(world);
     }
 
     function getClaimCounts() {
@@ -1110,6 +1185,7 @@ export default function PowerGridBackground() {
       const toBattery = new Map<number, number>();
       const fromBattery = new Map<number, number>();
       const toLab = new Map<number, number>();
+      const toFactory = new Map<number, number>();
 
       worldRef.current.workers.forEach((worker) => {
         if (!worker.task) {
@@ -1141,6 +1217,17 @@ export default function PowerGridBackground() {
           );
           toLab.set(worker.task.targetId, (toLab.get(worker.task.targetId) || 0) + 1);
         }
+
+        if (worker.task.type === 'power-factory') {
+          fromBattery.set(
+            worker.task.sourceId,
+            (fromBattery.get(worker.task.sourceId) || 0) + 1,
+          );
+          toFactory.set(
+            worker.task.targetId,
+            (toFactory.get(worker.task.targetId) || 0) + 1,
+          );
+        }
       });
 
       return {
@@ -1149,6 +1236,7 @@ export default function PowerGridBackground() {
         toBattery,
         fromBattery,
         toLab,
+        toFactory,
       };
     }
 
@@ -1158,6 +1246,7 @@ export default function PowerGridBackground() {
       const generators = getNodes('generator') as GeneratorNode[];
       const batteries = getNodes('battery') as BatteryNode[];
       const labs = getNodes('lab') as LabNode[];
+      const factories = getNodes('factory') as FactoryNode[];
       const claims = getClaimCounts();
 
       let chosen: { score: number; task: Task } | null = null;
@@ -1255,6 +1344,40 @@ export default function PowerGridBackground() {
                 type: 'power-lab',
                 sourceId: battery.id,
                 targetId: lab.id,
+                phase: 'pickup',
+              },
+            };
+          }
+        });
+      });
+
+      batteries.forEach((battery) => {
+        const availableCells = battery.charge - (claims.fromBattery.get(battery.id) || 0);
+        if (availableCells <= 0 || factories.length === 0 || world.workers.length >= WORKER_CAP) {
+          return;
+        }
+
+        factories.forEach((factory) => {
+          const incomingPower = claims.toFactory.get(factory.id) || 0;
+          const demandSlots = Math.max(0, Math.ceil((88 - factory.charge) / FACTORY_CHARGE_PER_CELL) - incomingPower);
+          if (demandSlots <= 0) {
+            return;
+          }
+
+          const workerDemand = (WORKER_CAP - world.workers.length) / WORKER_CAP;
+          const urgency = workerDemand * 0.75 + ((100 - factory.charge) / 100) * 0.25;
+          const travelPenalty =
+            distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
+            distance(battery.x, battery.y, factory.x, factory.y) * 0.45;
+          const score = urgency * 215 - travelPenalty;
+
+          if (!chosen || score > chosen.score) {
+            chosen = {
+              score,
+              task: {
+                type: 'power-factory',
+                sourceId: battery.id,
+                targetId: factory.id,
                 phase: 'pickup',
               },
             };
@@ -1375,6 +1498,15 @@ export default function PowerGridBackground() {
           return;
         }
 
+        if (worker.task.type === 'power-factory' && target.kind === 'battery' && target.charge > 0) {
+          target.charge -= 1;
+          worker.carrying = 'cell';
+          worker.task.phase = 'deliver';
+          clearWorkerRoute(worker);
+          addRipple(target.x, target.y, COLORS.green);
+          return;
+        }
+
         worker.task = null;
         worker.carrying = null;
         clearWorkerRoute(worker);
@@ -1396,6 +1528,11 @@ export default function PowerGridBackground() {
         target.pulse = 1;
       }
 
+      if (worker.task.type === 'power-factory' && target.kind === 'factory' && worker.carrying === 'cell') {
+        target.charge = clamp(target.charge + FACTORY_CHARGE_PER_CELL, 0, 100);
+        target.pulse = 1;
+      }
+
       addRipple(target.x, target.y, COLORS.green);
       worker.task = null;
       worker.carrying = null;
@@ -1405,13 +1542,14 @@ export default function PowerGridBackground() {
     function updateStructures(dt: number) {
       const generators = getNodes('generator') as GeneratorNode[];
       const labs = getNodes('lab') as LabNode[];
+      const factories = getNodes('factory') as FactoryNode[];
 
       generators.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.6);
         if (node.fuel > 0) {
           node.production += dt * 0.55;
           node.fuel = clamp(node.fuel - dt * 3.8, 0, 100);
-          if (node.production >= 1 && node.outputCells < 5) {
+          if (node.production >= 1 && node.outputCells < MAX_GENERATOR_OUTPUT) {
             node.production -= 1;
             node.outputCells += 1;
             addRipple(node.x, node.y, COLORS.lime);
@@ -1429,6 +1567,29 @@ export default function PowerGridBackground() {
         }
       });
 
+      factories.forEach((node) => {
+        node.pulse = Math.max(0, node.pulse - dt * 1.3);
+        if (worldRef.current.workers.length >= WORKER_CAP) {
+          node.buildProgress = Math.max(0, node.buildProgress - dt * 1.2);
+          return;
+        }
+
+        if (node.charge <= 0) {
+          node.charge = 0;
+          return;
+        }
+
+        node.charge = clamp(node.charge - dt * FACTORY_POWER_DRAIN, 0, 100);
+        node.buildProgress = clamp(node.buildProgress + dt * FACTORY_BUILD_RATE, 0, 100);
+        node.pulse = Math.max(node.pulse, 0.2);
+
+        if (node.buildProgress >= 100) {
+          node.buildProgress = Math.max(0, node.buildProgress - 100);
+          spawnWorkerNearFactory(node);
+          node.pulse = 1;
+        }
+      });
+
       worldRef.current.ripples = worldRef.current.ripples.filter((ripple) => ripple.life > 0.02);
       worldRef.current.ripples.forEach((ripple) => {
         ripple.life -= dt * 1.5;
@@ -1441,8 +1602,28 @@ export default function PowerGridBackground() {
 
     function updateWorkers(dt: number) {
       const world = worldRef.current;
+      const deadWorkerIds = new Set<number>();
 
       world.workers.forEach((worker) => {
+        if (deadWorkerIds.has(worker.id)) {
+          return;
+        }
+
+        if (worker.malfunctionTimer > 0) {
+          worker.malfunctionTimer = Math.max(0, worker.malfunctionTimer - dt);
+        }
+
+        const failureRate = WORKER_FAILURE_RATE * (worker.malfunctionTimer > 0 ? 1.8 : 1);
+        if (Math.random() < failureRate * dt) {
+          deadWorkerIds.add(worker.id);
+          removeWorkerWithBurst(worker);
+          return;
+        }
+
+        if (worker.malfunctionTimer <= 0 && Math.random() < WORKER_MALFUNCTION_RATE * dt) {
+          triggerWorkerMalfunction(worker);
+        }
+
         if (
           worker.task &&
           (!findNode(worker.task.sourceId) || !findNode(worker.task.targetId))
@@ -1452,13 +1633,20 @@ export default function PowerGridBackground() {
           clearWorkerRoute(worker);
         }
 
-        if (!worker.task) {
+        if (!worker.task && worker.malfunctionTimer <= 0) {
           assignTask(worker);
         }
 
         applyFlocking(worker, dt);
 
-        if (worker.task) {
+        if (worker.malfunctionTimer > 0) {
+          worker.wanderSeed += dt * 2.8;
+          const faultX = worker.x + Math.cos(worker.wanderSeed * 3.5 + worker.wobble) * 16;
+          const faultY = worker.y + Math.sin(worker.wanderSeed * 4.2 + worker.wobble) * 12;
+          steerTo(worker, faultX, faultY, 24, dt);
+          worker.vx += (Math.random() - 0.5) * 46 * dt;
+          worker.vy += (Math.random() - 0.5) * 46 * dt;
+        } else if (worker.task) {
           const target =
             worker.task.phase === 'pickup'
               ? findNode(worker.task.sourceId)
@@ -1516,6 +1704,10 @@ export default function PowerGridBackground() {
           worker.angle = Math.atan2(worker.vy, worker.vx);
         }
       });
+
+      if (deadWorkerIds.size > 0) {
+        world.workers = world.workers.filter((worker) => !deadWorkerIds.has(worker.id));
+      }
     }
 
     function drawGrid() {
@@ -1548,6 +1740,7 @@ export default function PowerGridBackground() {
       const generators = getNodes('generator') as GeneratorNode[];
       const batteries = getNodes('battery') as BatteryNode[];
       const labs = getNodes('lab') as LabNode[];
+      const factories = getNodes('factory') as FactoryNode[];
 
       ctx.save();
       ctx.setLineDash([4, 6]);
@@ -1609,6 +1802,26 @@ export default function PowerGridBackground() {
           ctx.beginPath();
           ctx.moveTo(source.x, source.y);
           ctx.lineTo(lab.x, lab.y);
+          ctx.stroke();
+        }
+      });
+
+      factories.forEach((factory) => {
+        const source = batteries.reduce<BatteryNode | null>((best, node) => {
+          if (!best) {
+            return node;
+          }
+          return distance(factory.x, factory.y, node.x, node.y) <
+            distance(factory.x, factory.y, best.x, best.y)
+            ? node
+            : best;
+        }, null);
+
+        if (source) {
+          ctx.strokeStyle = 'rgba(66, 66, 66, 0.18)';
+          ctx.beginPath();
+          ctx.moveTo(source.x, source.y);
+          ctx.lineTo(factory.x, factory.y);
           ctx.stroke();
         }
       });
@@ -1687,23 +1900,56 @@ export default function PowerGridBackground() {
         return;
       }
 
-      const energyWidth = Math.round((node.energy / 100) * 24);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillRect(x - 16, y - 13, 32, 26);
-      ctx.fillStyle = COLORS.paper;
-      ctx.fillRect(x - 14, y - 11, 28, 22);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillRect(x - 9, y - 6, 18, 12);
-      ctx.fillStyle = COLORS.green;
-      ctx.fillRect(x - 7, y - 4, Math.max(6, energyWidth), 8);
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillRect(x - 4, y + 13, 8, 4);
-      if (node.pulse > 0) {
-        ctx.strokeStyle = `rgba(0, 185, 6, ${node.pulse * 0.7})`;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x - 19, y - 16, 38, 32);
+      if (node.kind === 'lab') {
+        const energyWidth = Math.round((node.energy / 100) * 24);
+        ctx.fillStyle = COLORS.ink;
+        ctx.fillRect(x - 16, y - 13, 32, 26);
+        ctx.fillStyle = COLORS.paper;
+        ctx.fillRect(x - 14, y - 11, 28, 22);
+        ctx.fillStyle = COLORS.ink;
+        ctx.fillRect(x - 9, y - 6, 18, 12);
+        ctx.fillStyle = COLORS.green;
+        ctx.fillRect(x - 7, y - 4, Math.max(6, energyWidth), 8);
+        ctx.fillStyle = COLORS.ink;
+        ctx.fillRect(x - 4, y + 13, 8, 4);
+        if (node.pulse > 0) {
+          ctx.strokeStyle = `rgba(0, 185, 6, ${node.pulse * 0.7})`;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(x - 19, y - 16, 38, 32);
+        }
+        drawLabel('LAB', x, y + 30);
+        return;
       }
-      drawLabel('LAB', x, y + 30);
+
+      const factoryChargeWidth = Math.round((node.charge / 100) * 24);
+      const buildWidth = Math.round((node.buildProgress / 100) * 24);
+      ctx.fillStyle = COLORS.ink;
+      ctx.fillRect(x - 18, y - 14, 36, 30);
+      ctx.fillStyle = COLORS.paper;
+      ctx.fillRect(x - 16, y - 12, 32, 26);
+      ctx.fillStyle = COLORS.ink;
+      ctx.fillRect(x - 10, y - 6, 8, 8);
+      ctx.fillRect(x + 2, y - 6, 8, 8);
+      ctx.strokeStyle = COLORS.green;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y - 2);
+      ctx.lineTo(x + 2, y + 2);
+      ctx.moveTo(x - 2, y + 2);
+      ctx.lineTo(x + 2, y - 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(185, 233, 55, 0.22)';
+      ctx.fillRect(x - 14, y + 18, 28, 4);
+      ctx.fillStyle = COLORS.lime;
+      ctx.fillRect(x - 14, y + 18, factoryChargeWidth, 4);
+      ctx.fillStyle = COLORS.green;
+      ctx.fillRect(x - 14, y - 18, buildWidth, 2);
+      if (node.pulse > 0) {
+        ctx.strokeStyle = `rgba(185, 233, 55, ${node.pulse * 0.7})`;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - 21, y - 17, 42, 36);
+      }
+      drawLabel('FACT', x, y + 33);
     }
 
     function drawWorker(worker: Worker) {
@@ -1721,7 +1967,8 @@ export default function PowerGridBackground() {
       ctx.ellipse(0, 6, 6, 3, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = COLORS.green;
+      const isMalfunctioning = worker.malfunctionTimer > 0;
+      ctx.strokeStyle = isMalfunctioning ? COLORS.ink : COLORS.green;
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(0, -1);
@@ -1739,8 +1986,16 @@ export default function PowerGridBackground() {
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = COLORS.lime;
+      ctx.fillStyle = isMalfunctioning ? COLORS.ink : COLORS.lime;
       ctx.fillRect(1, -1, 2, 2);
+
+      if (isMalfunctioning) {
+        ctx.strokeStyle = COLORS.lime;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
 
       if (worker.carrying) {
         ctx.strokeStyle = COLORS.green;
@@ -1798,7 +2053,7 @@ export default function PowerGridBackground() {
       statsTimer += dt;
       if (statsTimer >= 0.25) {
         statsTimer = 0;
-        setMetrics(deriveMetrics(worldRef.current));
+        publishMetrics(worldRef.current);
       }
 
       animationFrame = window.requestAnimationFrame(loop);
@@ -1823,7 +2078,6 @@ export default function PowerGridBackground() {
     });
 
     resizeWorld();
-    canvas.addEventListener('pointerdown', handleCanvasPointer);
     window.addEventListener('resize', resizeWorld);
     animationFrame = window.requestAnimationFrame(loop);
 
@@ -1833,7 +2087,6 @@ export default function PowerGridBackground() {
         window.cancelAnimationFrame(layoutSyncFrame);
       }
       layoutObserver.disconnect();
-      canvas.removeEventListener('pointerdown', handleCanvasPointer);
       window.removeEventListener('resize', resizeWorld);
     };
   }, []);
@@ -1850,7 +2103,7 @@ export default function PowerGridBackground() {
           height: '100vh',
           zIndex: 0,
           display: 'block',
-          cursor: 'crosshair',
+          cursor: 'default',
         }}
       />
 
@@ -1895,76 +2148,55 @@ export default function PowerGridBackground() {
 
         {!isMenuMinimized && isHelpOpen && (
           <section id="boid-help-panel" className="sim-hotbar__help">
-            <h2 className="sim-hotbar__help-title">How to play</h2>
+            <h2 className="sim-hotbar__help-title">How it works</h2>
             <p className="sim-hotbar__help-copy">
-              The worker-boids keep a tiny power grid alive. The map now uses a fixed set of hallway routes, so scrolling the page does not reshape the boid traffic.
+              The worker-boids run the grid on their own. Coal feeds generators, generators make cells, batteries route them to labs and the factory, and the factory rebuilds the swarm when workers fail.
             </p>
             <ul className="sim-hotbar__help-list">
-              <li>Pick a tool, then click an open hallway lane to place it.</li>
-              <li>
-                <span className="sim-hotbar__token">Coal</span> feeds <span className="sim-hotbar__token">Gen</span>, <span className="sim-hotbar__token">Gen</span> makes energy cells, <span className="sim-hotbar__token">Cell</span> stores them, and <span className="sim-hotbar__token">Lab</span> consumes them.
-              </li>
-              <li>
-                Use <span className="sim-hotbar__token">Clear</span> to remove nearby structures you placed. <span className="sim-hotbar__token">Reset layout</span> restores the default map.
-              </li>
-              <li>
-                Watch <span className="sim-hotbar__token">Status</span> and <span className="sim-hotbar__token">Cells</span>. If fuel is low or labs are draining, add coal, generators, or storage.
-              </li>
+              <li><span className="sim-hotbar__token">Power</span> and <span className="sim-hotbar__token">Cells</span> show whether the energy chain is holding up.</li>
+              <li><span className="sim-hotbar__token">Workers</span> tracks the live crew against the 50-worker cap, including faults.</li>
+              <li><span className="sim-hotbar__token">Factory</span> shows how much charge and build progress the replacement line has available.</li>
+              <li>The hallway routes stay adaptive, so the swarm replans as the page layout shifts.</li>
             </ul>
           </section>
         )}
 
         {!isMenuMinimized && (
           <>
-            <div className="sim-hotbar__buttons" role="group" aria-label="Placement tools">
-              {TOOL_OPTIONS.map((tool) => (
-                <button
-                  key={tool.id}
-                  type="button"
-                  aria-label={tool.label}
-                  className={`sim-hotbar__button ${
-                    selectedTool === tool.id ? 'is-active' : ''
-                  }`}
-                  onClick={() => setSelectedTool(tool.id)}
-                >
-                  {tool.short}
-                </button>
-              ))}
+            <div className="sim-hotbar__status-card">
+              <p className="sim-hotbar__status-label">Status</p>
+              <p className="sim-hotbar__status-value">{metrics.status}</p>
             </div>
-            <button
-              type="button"
-              className="sim-hotbar__reset"
-              onClick={() => {
-                selectedToolRef.current = 'generator';
-                setSelectedTool('generator');
-                resetWorldRef.current();
-              }}
-            >
-              Reset layout
-            </button>
-            <dl className="sim-hotbar__stats">
-              <div>
-                <dt>Status</dt>
-                <dd>{metrics.status}</dd>
-              </div>
-              <div>
-                <dt>Workers</dt>
-                <dd>{metrics.workers}</dd>
-              </div>
-              <div>
-                <dt>Grid</dt>
-                <dd>
-                  {metrics.coalPatches}/{metrics.generators}/{metrics.batteries}/{metrics.labs}
-                </dd>
-              </div>
-              <div>
-                <dt>Cells</dt>
-                <dd>{metrics.storedCells}</dd>
-              </div>
-            </dl>
-            <p className="sim-hotbar__hint">
-              Click an open hallway to place the selected structure.
-            </p>
+            <div className="sim-hotbar__graphs" aria-label="Power grid trend graphs">
+              <MiniGraph
+                label="Power"
+                value={`${metrics.powerPct}%`}
+                detail="fuel + reserves"
+                values={graphHistory.power}
+                color={COLORS.green}
+              />
+              <MiniGraph
+                label="Cells"
+                value={`${metrics.cellsPct}%`}
+                detail="stored charge"
+                values={graphHistory.cells}
+                color={COLORS.lime}
+              />
+              <MiniGraph
+                label="Workers"
+                value={`${metrics.workers}/${metrics.workerCap}`}
+                detail={metrics.malfunctioning > 0 ? `${metrics.malfunctioning} faulty` : 'crew stable'}
+                values={graphHistory.workers}
+                color={COLORS.ink}
+              />
+              <MiniGraph
+                label="Factory"
+                value={`${metrics.factoryPct}%`}
+                detail={`${metrics.factoryCharge}% charge · ${metrics.factoryProgress}% build`}
+                values={graphHistory.factory}
+                color={COLORS.green}
+              />
+            </div>
           </>
         )}
       </aside>

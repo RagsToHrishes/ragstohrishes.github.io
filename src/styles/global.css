@@ -820,62 +820,16 @@ button {
   font-weight: 700;
 }
 
-.sim-hotbar__buttons {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.35rem;
+.sim-hotbar__status-card {
   margin-bottom: var(--spacing-sm);
-}
-
-.sim-hotbar__button,
-.sim-hotbar__reset {
-  border: 1px solid var(--color-border);
-  border-radius: 0.8rem;
-  background: rgba(255, 255, 255, 0.84);
-  color: var(--color-text-primary);
-  font-size: 0.78rem;
-  font-weight: 700;
-  transition:
-    border-color var(--transition-fast),
-    transform var(--transition-fast),
-    background var(--transition-fast);
-}
-
-.sim-hotbar__button {
-  min-height: 2.4rem;
-}
-
-.sim-hotbar__button.is-active,
-.sim-hotbar__button:hover,
-.sim-hotbar__button:focus-visible,
-.sim-hotbar__reset:hover,
-.sim-hotbar__reset:focus-visible {
-  border-color: var(--color-accent);
-  background: rgba(185, 233, 55, 0.18);
-  transform: translateY(-1px);
-}
-
-.sim-hotbar__reset {
-  width: 100%;
-  margin-bottom: var(--spacing-sm);
-  padding: 0.55rem 0.8rem;
-}
-
-.sim-hotbar__stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.4rem 0.75rem;
-  margin: 0 0 var(--spacing-sm);
-}
-
-.sim-hotbar__stats div {
-  padding: 0.42rem 0.5rem;
-  border-radius: 0.8rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.85rem;
   background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(66, 66, 66, 0.08);
 }
 
-.sim-hotbar__stats dt {
-  margin-bottom: 0.15rem;
+.sim-hotbar__status-label {
+  margin: 0 0 0.2rem;
   font-family: var(--font-family-mono);
   font-size: 0.66rem;
   font-weight: 700;
@@ -884,17 +838,65 @@ button {
   color: var(--color-text-tertiary);
 }
 
-.sim-hotbar__stats dd {
+.sim-hotbar__status-value {
   margin: 0;
   color: var(--color-text-primary);
-  font-size: 0.86rem;
+  font-size: 0.92rem;
   font-weight: 700;
 }
 
-.sim-hotbar__hint {
+.sim-hotbar__graphs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.sim-hotbar__graph {
+  padding: 0.48rem 0.55rem 0.42rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(66, 66, 66, 0.08);
+  min-width: 0;
+}
+
+.sim-hotbar__graph-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.sim-hotbar__graph-label {
   margin: 0;
-  font-size: 0.78rem;
+  font-family: var(--font-family-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.sim-hotbar__graph-value {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sim-hotbar__graph-svg {
+  display: block;
+  width: 100%;
+  height: 1.75rem;
+  margin-bottom: 0.15rem;
+}
+
+.sim-hotbar__graph-detail {
+  margin: 0;
   color: var(--color-text-muted);
+  font-size: 0.68rem;
+  line-height: 1.3;
 }
 
 .mb-0 {
