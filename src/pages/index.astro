@@ -276,11 +276,15 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       }
 
       let scrollOffset = 0;
+      let targetScrollOffset = 0;
       let maxScroll = 0;
       let trackBaseTop = 0;
       let visibleSpan = stage.clientHeight;
       let activeTouchId = null;
       let lastTouchY = 0;
+      let lastTouchTime = 0;
+      let touchVelocity = 0;
+      let scrollAnimationFrame = 0;
 
       const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -312,17 +316,68 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
         scrollTrack.style.transform = `translate3d(-50%, ${trackBaseTop - scrollOffset}px, 0)`;
       };
 
-      const scrollToOffset = (nextOffset) => {
-        scrollOffset = clampValue(nextOffset, 0, maxScroll);
-        applyScroll();
+      const stopScrollAnimation = () => {
+        if (!scrollAnimationFrame) {
+          return;
+        }
+
+        window.cancelAnimationFrame(scrollAnimationFrame);
+        scrollAnimationFrame = 0;
       };
 
-      const scrollBy = (delta) => {
+      const tickScroll = () => {
+        const delta = targetScrollOffset - scrollOffset;
+
+        if (activeTouchId === null && Math.abs(touchVelocity) > 0.01) {
+          targetScrollOffset = clampValue(targetScrollOffset + touchVelocity, 0, maxScroll);
+          touchVelocity *= 0.92;
+          if (targetScrollOffset === 0 || targetScrollOffset === maxScroll) {
+            touchVelocity *= 0.7;
+          }
+        }
+
+        const easing = activeTouchId === null ? 0.18 : 0.34;
+        if (Math.abs(delta) <= 0.25 && Math.abs(touchVelocity) <= 0.05) {
+          scrollOffset = targetScrollOffset;
+          applyScroll();
+          scrollAnimationFrame = 0;
+          return;
+        }
+
+        scrollOffset += delta * easing;
+        applyScroll();
+        scrollAnimationFrame = window.requestAnimationFrame(tickScroll);
+      };
+
+      const ensureScrollAnimation = () => {
+        if (scrollAnimationFrame) {
+          return;
+        }
+
+        scrollAnimationFrame = window.requestAnimationFrame(tickScroll);
+      };
+
+      const scrollToOffset = (nextOffset, options = {}) => {
+        const immediate = options.immediate === true;
+        targetScrollOffset = clampValue(nextOffset, 0, maxScroll);
+
+        if (immediate) {
+          stopScrollAnimation();
+          touchVelocity = 0;
+          scrollOffset = targetScrollOffset;
+          applyScroll();
+          return;
+        }
+
+        ensureScrollAnimation();
+      };
+
+      const scrollBy = (delta, options = {}) => {
         if (!delta) {
           return;
         }
 
-        scrollToOffset(scrollOffset + delta);
+        scrollToOffset(targetScrollOffset + delta, options);
       };
 
       const scrollToSection = (id) => {
@@ -361,6 +416,7 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
         visibleSpan = rects[rects.length - 1].bottom - rects[0].top;
         maxScroll = Math.max(0, scrollTrack.offsetHeight - visibleSpan);
         scrollOffset = clampValue(scrollOffset, 0, maxScroll);
+        targetScrollOffset = clampValue(targetScrollOffset, 0, maxScroll);
 
         clipRects.forEach((clipRect, index) => {
           if (!(clipRect instanceof SVGRectElement)) {
@@ -411,6 +467,8 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
         const touch = event.touches[0];
         activeTouchId = touch.identifier;
         lastTouchY = touch.clientY;
+        lastTouchTime = performance.now();
+        touchVelocity = 0;
       };
 
       const handleTouchMove = (event) => {
@@ -423,9 +481,14 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
           return;
         }
 
+        const now = performance.now();
+        const elapsed = Math.max(16, now - lastTouchTime);
+        const deltaY = lastTouchY - touch.clientY;
         event.preventDefault();
-        scrollBy(lastTouchY - touch.clientY);
+        scrollBy(deltaY * 1.08);
+        touchVelocity = clampValue((deltaY / elapsed) * 16, -28, 28);
         lastTouchY = touch.clientY;
+        lastTouchTime = now;
       };
 
       const handleTouchEnd = (event) => {
@@ -436,6 +499,7 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
         const touchStillActive = Array.from(event.touches).some((entry) => entry.identifier === activeTouchId);
         if (!touchStillActive) {
           activeTouchId = null;
+          ensureScrollAnimation();
         }
       };
 
@@ -558,6 +622,7 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       }
 
       window[cleanupKey] = () => {
+        stopScrollAnimation();
         resizeObserver.disconnect();
         window.removeEventListener('wheel', handleWheel);
         window.removeEventListener('touchstart', handleTouchStart);

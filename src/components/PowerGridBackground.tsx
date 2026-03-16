@@ -161,6 +161,9 @@ const COLORS = {
   paper: '#F5F5F5',
   lime: '#B9E937',
   green: '#00B906',
+  danger: '#D9480F',
+  dangerLight: '#FF8C42',
+  dangerDark: '#8F1D14',
   ink: '#424242',
   softInk: 'rgba(66, 66, 66, 0.22)',
 };
@@ -1294,10 +1297,13 @@ export default function PowerGridBackground() {
       worker.task = null;
       worker.carrying = null;
       clearWorkerRoute(worker);
-      addRipple(worker.x, worker.y, COLORS.lime);
+      addRipple(worker.x, worker.y, COLORS.danger);
     }
 
-    function spawnExplosion(x: number, y: number) {
+    function spawnExplosion(x: number, y: number, palette?: string[]) {
+      const colors = palette && palette.length > 0
+        ? palette
+        : [COLORS.lime, COLORS.green, COLORS.ink];
       for (let index = 0; index < 10; index += 1) {
         const angle = (index / 10) * Math.PI * 2 + Math.random() * 0.4;
         const speed = 42 + Math.random() * 52;
@@ -1308,16 +1314,16 @@ export default function PowerGridBackground() {
           vy: Math.sin(angle) * speed,
           life: 1,
           size: 2 + Math.random() * 2.2,
-          color: index % 3 === 0 ? COLORS.lime : index % 2 === 0 ? COLORS.green : COLORS.ink,
+          color: colors[index % colors.length],
         });
       }
     }
 
     function removeWorkerWithBurst(worker: Worker) {
-      addRipple(worker.x, worker.y, COLORS.ink);
-      addRipple(worker.x + 4, worker.y - 4, COLORS.lime);
-      addRipple(worker.x - 4, worker.y + 4, COLORS.ink);
-      spawnExplosion(worker.x, worker.y);
+      addRipple(worker.x, worker.y, COLORS.danger);
+      addRipple(worker.x + 4, worker.y - 4, COLORS.dangerLight);
+      addRipple(worker.x - 4, worker.y + 4, COLORS.dangerDark);
+      spawnExplosion(worker.x, worker.y, ['#FFB347', COLORS.dangerLight, COLORS.danger, COLORS.dangerDark]);
     }
 
     function getDefaultLanes(width: number, height: number) {
@@ -2444,7 +2450,7 @@ export default function PowerGridBackground() {
       ctx.rotate(worker.angle);
 
       const isMalfunctioning = worker.malfunctionTimer > 0;
-      ctx.strokeStyle = isMalfunctioning ? COLORS.ink : COLORS.green;
+      ctx.strokeStyle = isMalfunctioning ? COLORS.danger : COLORS.green;
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(0, -1);
@@ -2453,7 +2459,7 @@ export default function PowerGridBackground() {
       ctx.lineTo(5, 5);
       ctx.stroke();
 
-      ctx.fillStyle = COLORS.ink;
+      ctx.fillStyle = isMalfunctioning ? COLORS.dangerDark : COLORS.ink;
       ctx.beginPath();
       ctx.moveTo(bodyLength, 0);
       ctx.lineTo(-tailLength, -5);
@@ -2462,11 +2468,11 @@ export default function PowerGridBackground() {
       ctx.closePath();
       ctx.fill();
 
-      ctx.fillStyle = isMalfunctioning ? COLORS.ink : COLORS.lime;
+      ctx.fillStyle = isMalfunctioning ? COLORS.dangerLight : COLORS.lime;
       ctx.fillRect(1, -1, 2, 2);
 
       if (isMalfunctioning) {
-        ctx.strokeStyle = COLORS.lime;
+        ctx.strokeStyle = COLORS.danger;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(0, 0, 8, 0, Math.PI * 2);
