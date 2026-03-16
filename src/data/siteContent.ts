@@ -187,7 +187,7 @@ export const experiences: TimelineEntry[] = [
     title: 'Graduate Intern',
     organization: 'Jet Propulsion Laboratory',
     period: 'Feb 2026 - Present',
-    description: 'Developing reinforcement learning for dual-body mobile manipulation on rover platforms.',
+    description: 'Developing reinforcement learning algorithms for dual-manipulator mobile manipulation on rover platforms.',
     bullets: [],
     logo: {
       src: '/logos/JPL.png',
