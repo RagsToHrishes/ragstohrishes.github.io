@@ -28,14 +28,14 @@ const isHomePage = Astro.url.pathname === '/';
 
     <div class="site-root">
       <header class="site-nav">
-        <a href="/" class="site-brand" aria-label="Home">
+        <a href="/" class="site-brand" aria-label="Home" data-sim-obstacle="header">
           Hrish Leen
         </a>
         <nav class="site-actions" aria-label="Primary">
-          <a href="/resume.pdf" class="site-action site-action--primary" download>
+          <a href="/resume.pdf" class="site-action site-action--primary" download data-sim-obstacle="header">
             Resume
           </a>
-          <a href="/#contact" class="site-action">
+          <a href="/#contact" class="site-action" data-sim-obstacle="header">
             Contact
           </a>
         </nav>
@@ -47,7 +47,7 @@ const isHomePage = Astro.url.pathname === '/';
 
       {!isHomePage && (
         <footer class="site-footer">
-          <p>© {year} Hrish Leen.</p>
+          <p data-sim-obstacle="footer">© {year} Hrish Leen.</p>
         </footer>
       )}
     </div>

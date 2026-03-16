@@ -22,13 +22,11 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       <defs>
         <clipPath id="home-stage-clip" clipPathUnits="userSpaceOnUse">
           <rect data-clip-rect />
-          <rect data-clip-rect />
         </clipPath>
       </defs>
     </svg>
 
     <div class="panel-shells" aria-hidden="true">
-      <div class="panel panel-shell" data-panel-shell></div>
       <div class="panel panel-shell" data-panel-shell></div>
     </div>
 
@@ -281,6 +279,8 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       let maxScroll = 0;
       let trackBaseTop = 0;
       let visibleSpan = stage.clientHeight;
+      let activeTouchId = null;
+      let lastTouchY = 0;
 
       const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -295,14 +295,17 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
           320,
           Math.round(mainHeight || (window.innerHeight - fallbackNavHeight)),
         );
-        const topPanelHeight = Math.round(availableHeight * 0.45);
-        const hallwayHeight = Math.round(availableHeight * 0.1);
-        const bottomPanelHeight = Math.max(0, availableHeight - topPanelHeight - hallwayHeight);
+        const headerHallwayHeight = Math.round(availableHeight * 0.09);
+        const footerHallwayHeight = Math.round(availableHeight * 0.09);
+        const panelHeight = Math.max(
+          0,
+          availableHeight - headerHallwayHeight - footerHallwayHeight,
+        );
 
         stage.style.height = `${availableHeight}px`;
-        stage.style.setProperty('--top-panel-height', `${topPanelHeight}px`);
-        stage.style.setProperty('--middle-hallway-height', `${hallwayHeight}px`);
-        stage.style.setProperty('--bottom-panel-height', `${bottomPanelHeight}px`);
+        stage.style.setProperty('--header-hallway-height', `${headerHallwayHeight}px`);
+        stage.style.setProperty('--panel-height', `${panelHeight}px`);
+        stage.style.setProperty('--footer-hallway-height', `${footerHallwayHeight}px`);
       };
 
       const applyScroll = () => {
@@ -392,6 +395,48 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
 
         event.preventDefault();
         scrollBy(event.deltaY);
+      };
+
+      const handleTouchStart = (event) => {
+        if (event.touches.length !== 1) {
+          activeTouchId = null;
+          return;
+        }
+
+        if (event.target instanceof Element && event.target.closest('.sim-hotbar')) {
+          activeTouchId = null;
+          return;
+        }
+
+        const touch = event.touches[0];
+        activeTouchId = touch.identifier;
+        lastTouchY = touch.clientY;
+      };
+
+      const handleTouchMove = (event) => {
+        if (activeTouchId === null) {
+          return;
+        }
+
+        const touch = Array.from(event.touches).find((entry) => entry.identifier === activeTouchId);
+        if (!touch) {
+          return;
+        }
+
+        event.preventDefault();
+        scrollBy(lastTouchY - touch.clientY);
+        lastTouchY = touch.clientY;
+      };
+
+      const handleTouchEnd = (event) => {
+        if (activeTouchId === null) {
+          return;
+        }
+
+        const touchStillActive = Array.from(event.touches).some((entry) => entry.identifier === activeTouchId);
+        if (!touchStillActive) {
+          activeTouchId = null;
+        }
       };
 
       const handleKeyDown = (event) => {
@@ -500,6 +545,10 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       window.requestAnimationFrame(measureLayout);
 
       window.addEventListener('wheel', handleWheel, { passive: false });
+      window.addEventListener('touchstart', handleTouchStart, { passive: true });
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleTouchEnd, { passive: true });
+      window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
       window.addEventListener('keydown', handleKeyDown);
       document.addEventListener('click', handleClick);
       window.addEventListener('hashchange', handleHashChange);
@@ -511,6 +560,10 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
       window[cleanupKey] = () => {
         resizeObserver.disconnect();
         window.removeEventListener('wheel', handleWheel);
+        window.removeEventListener('touchstart', handleTouchStart);
+        window.removeEventListener('touchmove', handleTouchMove);
+        window.removeEventListener('touchend', handleTouchEnd);
+        window.removeEventListener('touchcancel', handleTouchEnd);
         window.removeEventListener('keydown', handleKeyDown);
         document.removeEventListener('click', handleClick);
         window.removeEventListener('hashchange', handleHashChange);

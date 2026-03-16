@@ -225,12 +225,20 @@ function measureElementRect(element: Element | null): ObstacleRect | null {
   return createRect(rect.left, rect.top, rect.width, rect.height);
 }
 
+function measureElementRects(selector: string): ObstacleRect[] {
+  return Array.from(document.querySelectorAll(selector))
+    .map((element) => measureElementRect(element))
+    .filter((rect): rect is ObstacleRect => rect !== null);
+}
+
 function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   const viewportWidth = Math.max(width, 360);
   const viewportHeight = Math.max(height, 560);
 
   const headerRect = measureElementRect(document.querySelector('.site-nav'));
   const footerRect = measureElementRect(document.querySelector('.site-footer'));
+  const headerObstacles = measureElementRects('[data-sim-obstacle="header"]');
+  const footerObstacles = measureElementRects('[data-sim-obstacle="footer"]');
 
   let panelRects = Array.from(document.querySelectorAll<HTMLElement>('.panel-shell'))
     .map((element) => measureElementRect(element))
@@ -240,49 +248,50 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   if (panelRects.length === 0) {
     const fallbackWidth = Math.min(viewportWidth - 40, 920);
     const fallbackLeft = (viewportWidth - fallbackWidth) * 0.5;
-    const fallbackHallwayHeight = viewportHeight * 0.1;
-    const fallbackHeight = viewportHeight * 0.45;
-    const fallbackTop = [
-      0,
-      fallbackHeight + fallbackHallwayHeight,
-    ];
-    panelRects = fallbackTop.map((top) => (
+    const fallbackHallwayHeight = clamp(viewportHeight * 0.09, 52, 88);
+    const fallbackHeight = Math.max(220, viewportHeight - fallbackHallwayHeight * 2);
+    panelRects = [
       createRect(
         fallbackLeft,
-        top,
+        fallbackHallwayHeight,
         fallbackWidth,
         fallbackHeight,
-      )
-    ));
+      ),
+    ];
   }
 
-  const hallwayY = panelRects
-    .slice(0, -1)
-    .map((rect, index) => {
-      const nextRect = panelRects[index + 1];
-      const gap = nextRect.top - rect.bottom;
-      if (gap < 10) {
-        return null;
-      }
+  const topPanelRect = panelRects[0];
+  const bottomPanelRect = panelRects[panelRects.length - 1];
+  const topHallwayMin = headerRect ? headerRect.bottom + 12 : 56;
+  const topHallwayMax = topPanelRect ? topPanelRect.top - 12 : viewportHeight * 0.22;
+  const bottomHallwayMin = bottomPanelRect ? bottomPanelRect.bottom + 12 : viewportHeight * 0.78;
+  const bottomHallwayMax = footerRect ? footerRect.top - 12 : viewportHeight - 56;
 
-      return clamp(
-        (rect.bottom + nextRect.top) * 0.5,
-        72,
-        viewportHeight - 72,
-      );
-    })
-    .filter((lane): lane is number => lane !== null);
-
-  if (hallwayY.length === 0) {
-    hallwayY.push(clamp(viewportHeight * 0.5, 72, viewportHeight - 72));
-  }
+  const hallwayY = [
+    clamp(
+      topHallwayMin <= topHallwayMax
+        ? (topHallwayMin + topHallwayMax) * 0.5
+        : topHallwayMin,
+      56,
+      viewportHeight - 56,
+    ),
+    clamp(
+      bottomHallwayMin <= bottomHallwayMax
+        ? (bottomHallwayMin + bottomHallwayMax) * 0.5
+        : bottomHallwayMax,
+      56,
+      viewportHeight - 56,
+    ),
+  ].filter((lane, index, lanes) => (
+    index === 0 || Math.abs(lane - lanes[index - 1]) > 24
+  ));
 
   const leftEdge = Math.min(...panelRects.map((rect) => rect.left));
   const rightEdge = Math.max(...panelRects.map((rect) => rect.right));
   const obstacles = [
-    ...(headerRect ? [headerRect] : []),
     ...panelRects,
-    ...(footerRect ? [footerRect] : []),
+    ...headerObstacles,
+    ...footerObstacles,
   ];
 
   return {
@@ -1327,45 +1336,48 @@ export default function PowerGridBackground() {
       width: number,
       height: number,
     ) {
-      if (lanes.panelRects.length >= 2) {
-        const topPanel = lanes.panelRects[0];
-        const bottomPanel = lanes.panelRects[lanes.panelRects.length - 1];
-        const topInset = clamp(topPanel.height * 0.16, 42, 110);
-        const bottomInset = clamp(bottomPanel.height * 0.16, 42, 110);
+      const hallwayY = lanes.yPositions.length > 0
+        ? lanes.yPositions
+        : [clamp(height * 0.5, 96, height - 96)];
+
+      if (hallwayY.length >= 2) {
+        const topHallway = hallwayY[0];
+        const bottomHallway = hallwayY[hallwayY.length - 1];
         const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
           {
             kind: 'coal',
             x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(topPanel.top + topInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'generator',
             x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(topPanel.top + topInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'battery',
             x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(bottomPanel.bottom - bottomInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'lab',
             x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(bottomPanel.bottom - bottomInset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'factory',
             x: clamp(lanes.centerLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(lanes.yPositions[0] ?? height * 0.5, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+          },
+          {
+            kind: 'factory',
+            x: clamp(lanes.centerLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
+            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
         ];
 
         return placements.map(({ kind, x, y }) => createStructure(kind, x, y, false));
       }
-
-      const hallwayY = lanes.yPositions.length > 0
-        ? lanes.yPositions
-        : [clamp(height * 0.5, 96, height - 96)];
 
       if (hallwayY.length === 1) {
         const centerOffset = clamp(
