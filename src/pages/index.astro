@@ -10,6 +10,10 @@ import {
   researchProjects,
   volunteering,
 } from '../data/siteContent';
+
+const heroGreetingLead = profile.greeting.endsWith(profile.name)
+  ? profile.greeting.slice(0, -profile.name.length).trimEnd()
+  : profile.greeting;
 ---
 
 <Layout title="Hrish Leen" description={profile.description}>
@@ -42,8 +46,9 @@ import {
             />
 
             <div class="hero-text">
-              <p class="section-kicker">{profile.greeting}</p>
-              <h1 id="hero-title" class="hero-title">{profile.name}</h1>
+              <h1 id="hero-title" class="hero-title">
+                {heroGreetingLead} <span class="hero-title-name">{profile.name}</span>
+              </h1>
               <p class="hero-subtitle">
                 {profile.title} at {profile.institution}
               </p>

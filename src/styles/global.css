@@ -423,6 +423,11 @@ button {
 
 .hero-title {
   margin-bottom: var(--spacing-xs);
+  color: var(--color-accent);
+}
+
+.hero-title-name {
+  color: var(--color-text-primary);
 }
 
 .hero-subtitle {
@@ -700,6 +705,8 @@ button {
   bottom: 1.2rem;
   z-index: 12;
   width: min(320px, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
   padding: 0.95rem;
   border-radius: 1.1rem;
   border: 1px solid var(--color-border);
@@ -720,7 +727,6 @@ button {
 .sim-hotbar__header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
 }
@@ -777,9 +783,14 @@ button {
 .sim-hotbar__help {
   margin: var(--spacing-sm) 0;
   padding: 0.8rem;
+  height: min(14rem, 36vh);
   border-radius: 0.95rem;
   border: 1px solid var(--color-border);
   background: rgba(255, 255, 255, 0.76);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .sim-hotbar__help-title {
@@ -805,6 +816,15 @@ button {
 
 .sim-hotbar__help-list li + li {
   margin-top: 0.45rem;
+}
+
+.sim-hotbar__help-note {
+  margin: 0.7rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(66, 66, 66, 0.08);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
 }
 
 .sim-hotbar__token {
@@ -897,6 +917,20 @@ button {
   color: var(--color-text-muted);
   font-size: 0.68rem;
   line-height: 1.3;
+}
+
+.sim-hotbar__footer {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(66, 66, 66, 0.08);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sim-hotbar.is-minimized .sim-hotbar__footer {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .mb-0 {

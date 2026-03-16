@@ -111,6 +111,14 @@ type Metrics = {
   factoryProgress: number;
 };
 
+type SwarmFocusKey = 'fuel' | 'cells' | 'labs' | 'factory' | 'crew';
+
+type SwarmStrategy = {
+  key: SwarmFocusKey;
+  label: string;
+  desiredWorkers: number;
+};
+
 type GraphHistory = {
   power: number[];
   cells: number[];
@@ -364,7 +372,7 @@ function MiniGraph({ label, value, detail, values, color }: MiniGraphProps) {
   );
 }
 
-function deriveMetrics(world: World): Metrics {
+function deriveMetrics(world: World, statusOverride?: string): Metrics {
   const coalPatches = world.structures.filter((node) => node.kind === 'coal').length;
   const generators = world.structures.filter((node) => node.kind === 'generator') as GeneratorNode[];
   const batteries = world.structures.filter((node) => node.kind === 'battery') as BatteryNode[];
@@ -409,6 +417,10 @@ function deriveMetrics(world: World): Metrics {
     status = 'Add storage';
   } else if (coalPatches) {
     status = 'Waiting on generators';
+  }
+
+  if (statusOverride) {
+    status = statusOverride;
   }
 
   return {
@@ -516,6 +528,244 @@ export default function PowerGridBackground() {
       return clamp(Math.round(target), 42, 72);
     }
 
+    function getStrategicDesiredWorkerCount(
+      world: World,
+      generators: GeneratorNode[],
+      batteries: BatteryNode[],
+      labs: LabNode[],
+      factories: FactoryNode[],
+    ) {
+      const baseTarget = getDesiredWorkerCount();
+      const averageFuel =
+        generators.length > 0
+          ? generators.reduce((sum, node) => sum + node.fuel, 0) / generators.length
+          : 0;
+      const averageLabEnergy =
+        labs.length > 0
+          ? labs.reduce((sum, node) => sum + node.energy, 0) / labs.length
+          : 0;
+      const averageFactoryCharge =
+        factories.length > 0
+          ? factories.reduce((sum, node) => sum + node.charge, 0) / factories.length
+          : 0;
+      const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
+      const totalCellCapacity =
+        generators.length * MAX_GENERATOR_OUTPUT +
+        batteries.reduce((sum, node) => sum + node.capacity, 0);
+      const storedCells =
+        generators.reduce((sum, node) => sum + node.outputCells, 0) +
+        batteries.reduce((sum, node) => sum + node.charge, 0);
+      const cellsPct = totalCellCapacity > 0 ? (storedCells / totalCellCapacity) * 100 : 0;
+
+      let target = baseTarget;
+      target += Math.round(clamp((52 - averageFuel) / 52, 0, 1) * 12);
+      target += Math.round(clamp((44 - averageFactoryCharge) / 44, 0, 1) * 4);
+      target += Math.round(clamp((48 - cellsPct) / 48, 0, 1) * 3);
+      target += Math.round(clamp((55 - averageLabEnergy) / 55, 0, 1) * 3);
+
+      if (malfunctioning > Math.max(2, Math.round(world.workers.length * 0.1))) {
+        target += 4;
+      }
+
+      return clamp(target, 42, 84);
+    }
+
+    const STRATEGY_KEYS: SwarmFocusKey[] = ['fuel', 'cells', 'labs', 'factory', 'crew'];
+    let currentStrategy: SwarmStrategy = {
+      key: 'fuel',
+      label: 'Booting grid',
+      desiredWorkers: getDesiredWorkerCount(),
+    };
+    let strategyHoldTimer = 0;
+    const strategyCooldowns: Record<SwarmFocusKey, number> = {
+      fuel: 0,
+      cells: 0,
+      labs: 0,
+      factory: 0,
+      crew: 0,
+    };
+
+    function getSwarmFocusLabel(key: SwarmFocusKey) {
+      switch (key) {
+        case 'fuel':
+          return 'Fuel push';
+        case 'cells':
+          return 'Reserve balancing';
+        case 'labs':
+          return 'Lab support';
+        case 'factory':
+          return 'Factory ramp';
+        case 'crew':
+          return 'Crew recovery';
+        default:
+          return 'Grid nominal';
+      }
+    }
+
+    function getSwarmFocusOscillation(key: SwarmFocusKey) {
+      const phaseOffsets: Record<SwarmFocusKey, number> = {
+        fuel: 0,
+        cells: 1.35,
+        labs: 2.7,
+        factory: 4.05,
+        crew: 5.4,
+      };
+      return (Math.sin(simulationTime * 0.72 + phaseOffsets[key]) + 1) * 0.11;
+    }
+
+    function getSwarmFocusWorkerBonus(key: SwarmFocusKey) {
+      switch (key) {
+        case 'fuel':
+          return 6;
+        case 'cells':
+          return 2;
+        case 'labs':
+          return 1;
+        case 'factory':
+          return 8;
+        case 'crew':
+          return 10;
+        default:
+          return 0;
+      }
+    }
+
+    function updateSwarmStrategy(dt: number) {
+      strategyHoldTimer += dt;
+      STRATEGY_KEYS.forEach((key) => {
+        strategyCooldowns[key] = Math.max(0, strategyCooldowns[key] - dt);
+      });
+
+      const world = worldRef.current;
+      const coalPatches = getNodes('coal') as CoalPatch[];
+      const generators = getNodes('generator') as GeneratorNode[];
+      const batteries = getNodes('battery') as BatteryNode[];
+      const labs = getNodes('lab') as LabNode[];
+      const factories = getNodes('factory') as FactoryNode[];
+      const metricsSnapshot = deriveMetrics(world);
+      const systemReady =
+        coalPatches.length > 0 &&
+        generators.length > 0 &&
+        batteries.length > 0 &&
+        labs.length > 0 &&
+        factories.length > 0;
+
+      if (!systemReady) {
+        currentStrategy = {
+          ...currentStrategy,
+          label: metricsSnapshot.status,
+          desiredWorkers: getDesiredWorkerCount(),
+        };
+        return;
+      }
+
+      const baseDesiredWorkers = getStrategicDesiredWorkerCount(
+        world,
+        generators,
+        batteries,
+        labs,
+        factories,
+      );
+      const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
+      const averageFuel = generators.length > 0 ? totalFuel / generators.length : 0;
+      const totalCellCapacity =
+        generators.length * MAX_GENERATOR_OUTPUT +
+        batteries.reduce((sum, node) => sum + node.capacity, 0);
+      const storedCells =
+        generators.reduce((sum, node) => sum + node.outputCells, 0) +
+        batteries.reduce((sum, node) => sum + node.charge, 0);
+      const cellsPct = totalCellCapacity > 0 ? (storedCells / totalCellCapacity) * 100 : 0;
+      const averageLabEnergy =
+        labs.length > 0
+          ? labs.reduce((sum, node) => sum + node.energy, 0) / labs.length
+          : 0;
+      const averageFactoryCharge =
+        factories.length > 0
+          ? factories.reduce((sum, node) => sum + node.charge, 0) / factories.length
+          : 0;
+      const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
+      const crewNeed = clamp(
+        (baseDesiredWorkers - world.workers.length) / Math.max(1, baseDesiredWorkers),
+        0,
+        1,
+      );
+      const fuelNeed = clamp((68 - averageFuel) / 68, 0, 1);
+      const cellNeed = clamp((62 - cellsPct) / 62, 0, 1);
+      const labNeed = clamp((74 - averageLabEnergy) / 74, 0, 1);
+      const factoryNeed = clamp(
+        crewNeed * 0.58 + clamp((64 - averageFactoryCharge) / 64, 0, 1) * 0.42,
+        0,
+        1,
+      );
+      const crewFaultNeed = clamp(
+        malfunctioning / Math.max(1, Math.round(Math.max(6, world.workers.length * 0.14))),
+        0,
+        1,
+      );
+
+      const rawScores: Record<SwarmFocusKey, number> = {
+        fuel: fuelNeed * 1.55 + crewNeed * 0.22 + factoryNeed * 0.12 + getSwarmFocusOscillation('fuel'),
+        cells: cellNeed * 1.4 + labNeed * 0.12 + getSwarmFocusOscillation('cells'),
+        labs: labNeed * 1.42 + cellNeed * 0.15 + getSwarmFocusOscillation('labs'),
+        factory: factoryNeed * 1.35 + fuelNeed * 0.35 + getSwarmFocusOscillation('factory'),
+        crew: crewFaultNeed * 1.5 + crewNeed * 0.95 + fuelNeed * 0.18 + getSwarmFocusOscillation('crew'),
+      };
+      const effectiveScores = STRATEGY_KEYS.reduce((scores, key) => {
+        scores[key] = rawScores[key] - strategyCooldowns[key] * 0.18;
+        return scores;
+      }, {} as Record<SwarmFocusKey, number>);
+      const orderedKeys = [...STRATEGY_KEYS].sort(
+        (first, second) => effectiveScores[second] - effectiveScores[first],
+      );
+      const currentEffective = effectiveScores[currentStrategy.key];
+      const leader = orderedKeys[0];
+      let nextKey = currentStrategy.key;
+
+      if (leader !== currentStrategy.key && effectiveScores[leader] > currentEffective + 0.24) {
+        nextKey = leader;
+      } else if (strategyHoldTimer > 5.5) {
+        const rotatingTarget = orderedKeys.find((key) => (
+          key !== currentStrategy.key &&
+          rawScores[key] > 0.18 &&
+          effectiveScores[key] > currentEffective - 0.18
+        ));
+
+        if (rotatingTarget) {
+          nextKey = rotatingTarget;
+        }
+      }
+
+      if (strategyHoldTimer > 8.5) {
+        const forcedTarget = orderedKeys.find((key) => (
+          key !== currentStrategy.key &&
+          rawScores[key] > 0.14
+        ));
+
+        if (forcedTarget) {
+          nextKey = forcedTarget;
+        }
+      }
+
+      if (nextKey !== currentStrategy.key) {
+        strategyCooldowns[currentStrategy.key] = 4.5;
+        currentStrategy = {
+          ...currentStrategy,
+          key: nextKey,
+        };
+        strategyHoldTimer = 0;
+      }
+
+      currentStrategy = {
+        key: currentStrategy.key,
+        label: getSwarmFocusLabel(currentStrategy.key),
+        desiredWorkers: clamp(
+          baseDesiredWorkers + getSwarmFocusWorkerBonus(currentStrategy.key),
+          42,
+          88,
+        ),
+      };
+    }
+
     function clearWorkerRoute(worker: Worker) {
       worker.route = [];
       worker.routeIndex = 0;
@@ -530,7 +780,7 @@ export default function PowerGridBackground() {
     }
 
     function publishMetrics(world: World) {
-      const nextMetrics = deriveMetrics(world);
+      const nextMetrics = deriveMetrics(world, currentStrategy.label);
       setMetrics(nextMetrics);
       setGraphHistory((previous) => ({
         power: pushHistoryValue(previous.power, nextMetrics.powerPct),
@@ -1381,7 +1631,6 @@ export default function PowerGridBackground() {
         0,
         1,
       );
-      const status = deriveMetrics(world).status;
       const weights: Record<TaskType, number> = {
         'fuel-generator': 0.9 + fuelNeed * 1.4,
         'charge-battery': 0.9 + cellNeed * 1.3,
@@ -1389,29 +1638,34 @@ export default function PowerGridBackground() {
         'power-factory': 0.85 + factoryNeed * 1.45,
       };
 
-      if (status === 'Fuel low') {
+      if (currentStrategy.key === 'fuel') {
         weights['fuel-generator'] *= 2.25;
-        weights['charge-battery'] *= 0.8;
-        weights['power-lab'] *= 0.58;
-        weights['power-factory'] *= 0.7;
-      } else if (status === 'Balancing load') {
+        weights['charge-battery'] *= 0.94;
+        weights['power-lab'] *= 0.72;
+        weights['power-factory'] *= 1.35;
+      } else if (currentStrategy.key === 'cells') {
         weights['charge-battery'] *= 2.05;
         weights['fuel-generator'] *= 1.2;
-        weights['power-lab'] *= 0.82;
-      } else if (status === 'Labs are draining') {
+        weights['power-lab'] *= 0.84;
+        weights['power-factory'] *= 0.92;
+      } else if (currentStrategy.key === 'labs') {
         weights['power-lab'] *= 2.1;
         weights['charge-battery'] *= 1.18;
-      } else if (status === 'Factory starved') {
+        weights['power-factory'] *= 0.92;
+      } else if (currentStrategy.key === 'factory') {
         weights['power-factory'] *= 2.2;
-        weights['power-lab'] *= 0.82;
-      } else if (status === 'Crew faults') {
+        weights['power-lab'] *= 0.84;
+        weights['fuel-generator'] *= 1.08;
+      } else if (currentStrategy.key === 'crew') {
         weights['power-factory'] *= 1.95;
-        weights['fuel-generator'] *= 1.12;
+        weights['fuel-generator'] *= 1.28;
+        weights['charge-battery'] *= 0.95;
+        weights['power-lab'] *= 0.82;
       }
 
       return {
         desiredWorkers,
-        status,
+        status: currentStrategy.label,
         weights,
       };
     }
@@ -1424,7 +1678,7 @@ export default function PowerGridBackground() {
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
       const claims = getClaimCounts();
-      const desiredWorkers = getDesiredWorkerCount();
+      const desiredWorkers = currentStrategy.desiredWorkers;
       const priority = getTaskPriorityProfile(
         world,
         generators,
@@ -1727,7 +1981,7 @@ export default function PowerGridBackground() {
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
       const loadFactor = getLoadCycleValue();
-      const desiredWorkers = getDesiredWorkerCount();
+      const desiredWorkers = currentStrategy.desiredWorkers;
 
       generators.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.6);
@@ -1798,7 +2052,7 @@ export default function PowerGridBackground() {
     function updateWorkers(dt: number) {
       const world = worldRef.current;
       const deadWorkerIds = new Set<number>();
-      const desiredWorkers = getDesiredWorkerCount();
+      const desiredWorkers = currentStrategy.desiredWorkers;
       const loadFactor = getLoadCycleValue();
 
       world.workers.forEach((worker) => {
@@ -2273,6 +2527,7 @@ export default function PowerGridBackground() {
       previousTime = now;
       simulationTime += dt;
 
+      updateSwarmStrategy(dt);
       updateStructures(dt);
       updateWorkers(dt);
       drawScene();
@@ -2340,52 +2595,24 @@ export default function PowerGridBackground() {
       >
         <div className="sim-hotbar__header">
           <p className="sim-hotbar__eyebrow">Ambient power grid</p>
-          <div className="sim-hotbar__actions">
-            <button
-              type="button"
-              className="sim-hotbar__icon-button"
-              aria-expanded={isHelpOpen && !isMenuMinimized}
-              aria-controls="boid-help-panel"
-              aria-label="About the boid simulation"
-              onClick={() => {
-                if (isMenuMinimized) {
-                  setIsMenuMinimized(false);
-                  setIsHelpOpen(true);
-                  return;
-                }
-
-                setIsHelpOpen((open) => !open);
-              }}
-            >
-              ?
-            </button>
-            <button
-              type="button"
-              className="sim-hotbar__icon-button"
-              aria-label={isMenuMinimized ? 'Expand boid menu' : 'Minimize boid menu'}
-              aria-expanded={!isMenuMinimized}
-              onClick={() => {
-                setIsMenuMinimized((collapsed) => !collapsed);
-              }}
-            >
-              {isMenuMinimized ? '+' : '–'}
-            </button>
-          </div>
         </div>
 
         {!isMenuMinimized && isHelpOpen && (
           <section id="boid-help-panel" className="sim-hotbar__help">
             <h2 className="sim-hotbar__help-title">How it works</h2>
             <p className="sim-hotbar__help-copy">
-              The worker-boids act like a homeostatic controller for the whole system. They continuously shift work to keep fuel, stored cells, lab energy, and worker count near healthy ranges instead of letting any one resource collapse.
+              The worker-boids act like a homeostatic controller for the whole system. They continuously rotate through short strategic pushes so fuel, stored cells, lab energy, and worker count all stay in motion instead of letting one objective dominate forever.
             </p>
             <ul className="sim-hotbar__help-list">
-              <li><span className="sim-hotbar__token">Fuel low</span> pushes more workers toward coal and generators.</li>
-              <li><span className="sim-hotbar__token">Balancing load</span> shifts attention toward moving energy into batteries.</li>
-              <li><span className="sim-hotbar__token">Labs are draining</span> redirects traffic from storage into lab power.</li>
-              <li><span className="sim-hotbar__token">Factory</span> becomes a higher priority when workers malfunction or the crew count falls.</li>
+              <li><span className="sim-hotbar__token">Fuel push</span> sends more traffic toward coal, generators, and even new worker production if fuel stays stressed.</li>
+              <li><span className="sim-hotbar__token">Reserve balancing</span> shifts attention toward moving energy into batteries.</li>
+              <li><span className="sim-hotbar__token">Lab support</span> redirects traffic from storage into lab power.</li>
+              <li><span className="sim-hotbar__token">Factory ramp</span> and <span className="sim-hotbar__token">Crew recovery</span> raise factory priority when the swarm wants more workers or needs to replace faults.</li>
               <li>The hallway routes stay adaptive, so the swarm replans as the page layout changes and keeps returning toward equilibrium.</li>
             </ul>
+            <p className="sim-hotbar__help-note">
+              This simulation is tuned to surface rich, shifting behavior, so the swarm keeps producing new dynamics instead of settling into one static pattern.
+            </p>
           </section>
         )}
 
@@ -2427,6 +2654,40 @@ export default function PowerGridBackground() {
             </div>
           </>
         )}
+
+        <div className="sim-hotbar__footer">
+          <div className="sim-hotbar__actions">
+            <button
+              type="button"
+              className="sim-hotbar__icon-button"
+              aria-expanded={isHelpOpen && !isMenuMinimized}
+              aria-controls="boid-help-panel"
+              aria-label="About the boid simulation"
+              onClick={() => {
+                if (isMenuMinimized) {
+                  setIsMenuMinimized(false);
+                  setIsHelpOpen(true);
+                  return;
+                }
+
+                setIsHelpOpen((open) => !open);
+              }}
+            >
+              ?
+            </button>
+            <button
+              type="button"
+              className="sim-hotbar__icon-button"
+              aria-label={isMenuMinimized ? 'Expand boid menu' : 'Minimize boid menu'}
+              aria-expanded={!isMenuMinimized}
+              onClick={() => {
+                setIsMenuMinimized((collapsed) => !collapsed);
+              }}
+            >
+              {isMenuMinimized ? '+' : '–'}
+            </button>
+          </div>
+        </div>
       </aside>
     </>
   );
