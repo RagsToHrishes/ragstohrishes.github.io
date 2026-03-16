@@ -262,27 +262,31 @@ button {
 .panel-shells {
   position: absolute;
   inset: 0;
+  display: grid;
+  grid-template-rows:
+    var(--top-panel-height)
+    var(--middle-hallway-height)
+    var(--bottom-panel-height);
+  justify-items: center;
+  align-items: stretch;
   pointer-events: none;
+  z-index: 1;
 }
 
 .panel-shell {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
   width: var(--window-width);
-  height: var(--top-panel-height);
+  height: auto;
+  min-height: 0;
   padding: 0;
 }
 
 .panel-shell:nth-child(1) {
-  top: 0;
+  grid-row: 1;
 }
 
 .panel-shell:nth-child(2) {
-  top: calc(var(--top-panel-height) + var(--middle-hallway-height));
-  bottom: auto;
-  height: var(--bottom-panel-height);
+  grid-row: 3;
 }
 
 .home-scroll-layer {

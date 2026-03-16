@@ -1,0 +1,37 @@
+Homepage panel split fix notes
+
+Problem:
+- The bottom panel looked missing until resize.
+- The layout was acting like one top panel plus open field.
+- Header/footer and percentage-based sizing were making the panel math unstable.
+
+What actually fixed it:
+- Measure the remaining homepage space from `.page-main`, not from raw viewport math alone.
+- In `src/pages/index.astro`, `syncStageHeight()` now computes:
+  - `availableHeight = pageMain.getBoundingClientRect().height`
+  - fallback only if needed: `window.innerHeight - headerHeight`
+  - top panel = 45% of available height
+  - middle hallway = 10% of available height
+  - bottom panel = the rest
+- Write those values back as pixel CSS variables:
+  - `--top-panel-height`
+  - `--middle-hallway-height`
+  - `--bottom-panel-height`
+
+Important CSS change:
+- In `src/styles/global.css`, `.panel-shells` is a 3-row grid:
+  - row 1 = top panel
+  - row 2 = hallway
+  - row 3 = bottom panel
+- The two `.panel-shell` elements are assigned to grid rows 1 and 3.
+- This is more reliable than absolutely positioning both panels with percentage heights.
+
+Why this worked:
+- The split is now relative to the actual remaining content area under the header.
+- Resize and initial load use the same measurement path.
+- The bottom panel no longer depends on a fragile absolute-position calculation.
+
+If this breaks again:
+- Check `syncStageHeight()` in `src/pages/index.astro`.
+- Check `.panel-shells` grid rows in `src/styles/global.css`.
+- Keep the split based on measured `page-main` height, not just viewport percentages.

@@ -256,6 +256,7 @@ import {
       }
 
       const stage = document.getElementById('home-stage');
+      const pageMain = document.querySelector('.page-main');
       const siteNav = document.querySelector('.site-nav');
       const scrollLayer = document.getElementById('home-scroll-layer');
       const scrollTrack = document.getElementById('home-scroll-track');
@@ -279,14 +280,21 @@ import {
       const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
 
       const syncStageHeight = () => {
-        const navHeight = siteNav instanceof HTMLElement
+        const mainHeight = pageMain instanceof HTMLElement
+          ? pageMain.getBoundingClientRect().height
+          : 0;
+        const fallbackNavHeight = siteNav instanceof HTMLElement
           ? siteNav.getBoundingClientRect().height
           : 0;
-        const availableHeight = Math.max(320, window.innerHeight - navHeight);
-        stage.style.height = `${availableHeight}px`;
-        const topPanelHeight = availableHeight * 0.45;
-        const hallwayHeight = availableHeight * 0.1;
+        const availableHeight = Math.max(
+          320,
+          Math.round(mainHeight || (window.innerHeight - fallbackNavHeight)),
+        );
+        const topPanelHeight = Math.round(availableHeight * 0.45);
+        const hallwayHeight = Math.round(availableHeight * 0.1);
         const bottomPanelHeight = Math.max(0, availableHeight - topPanelHeight - hallwayHeight);
+
+        stage.style.height = `${availableHeight}px`;
         stage.style.setProperty('--top-panel-height', `${topPanelHeight}px`);
         stage.style.setProperty('--middle-hallway-height', `${hallwayHeight}px`);
         stage.style.setProperty('--bottom-panel-height', `${bottomPanelHeight}px`);
@@ -467,6 +475,9 @@ import {
         measureLayout();
       });
 
+      if (pageMain instanceof HTMLElement) {
+        resizeObserver.observe(pageMain);
+      }
       if (siteNav instanceof HTMLElement) {
         resizeObserver.observe(siteNav);
       }
