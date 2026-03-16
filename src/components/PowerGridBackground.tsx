@@ -237,6 +237,8 @@ function measureElementRects(selector: string): ObstacleRect[] {
 function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   const viewportWidth = Math.max(width, 360);
   const viewportHeight = Math.max(height, 560);
+  const hallwayToChromeGap = 42;
+  const hallwayToPanelGap = 24;
 
   const headerRect = measureElementRect(document.querySelector('.site-nav'));
   const footerRect = measureElementRect(document.querySelector('.site-footer'));
@@ -263,12 +265,37 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
     ];
   }
 
+  if (panelRects.length === 1) {
+    const [panelRect] = panelRects;
+    const topInset = headerRect
+      ? headerRect.bottom + hallwayToChromeGap + hallwayToPanelGap
+      : clamp(viewportHeight * 0.18, 88, 168);
+    const bottomInset = footerRect
+      ? footerRect.top - hallwayToChromeGap - hallwayToPanelGap
+      : viewportHeight - clamp(viewportHeight * 0.16, 84, 156);
+    const clippedTop = clamp(Math.max(panelRect.top, topInset), 56, viewportHeight - 180);
+    const clippedBottom = clamp(
+      Math.min(panelRect.bottom, bottomInset),
+      clippedTop + 140,
+      viewportHeight - 56,
+    );
+
+    panelRects = [
+      createRect(
+        panelRect.left,
+        clippedTop,
+        panelRect.width,
+        clippedBottom - clippedTop,
+      ),
+    ];
+  }
+
   const topPanelRect = panelRects[0];
   const bottomPanelRect = panelRects[panelRects.length - 1];
-  const topHallwayMin = headerRect ? headerRect.bottom + 12 : 56;
-  const topHallwayMax = topPanelRect ? topPanelRect.top - 12 : viewportHeight * 0.22;
-  const bottomHallwayMin = bottomPanelRect ? bottomPanelRect.bottom + 12 : viewportHeight * 0.78;
-  const bottomHallwayMax = footerRect ? footerRect.top - 12 : viewportHeight - 56;
+  const topHallwayMin = headerRect ? headerRect.bottom + hallwayToChromeGap : 64;
+  const topHallwayMax = topPanelRect ? topPanelRect.top - hallwayToPanelGap : viewportHeight * 0.24;
+  const bottomHallwayMin = bottomPanelRect ? bottomPanelRect.bottom + hallwayToPanelGap : viewportHeight * 0.76;
+  const bottomHallwayMax = footerRect ? footerRect.top - hallwayToChromeGap : viewportHeight - 64;
 
   const hallwayY = [
     clamp(
@@ -521,10 +548,30 @@ export default function PowerGridBackground() {
 
     let animationFrame = 0;
     let previousTime = performance.now();
+    let lastRenderTime = 0;
     let statsTimer = 0;
     let simulationTime = 0;
+    const navigatorWithHints = navigator as Navigator & {
+      connection?: { saveData?: boolean };
+      deviceMemory?: number;
+    };
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lowPowerDevice =
+      prefersReducedMotion ||
+      navigatorWithHints.connection?.saveData === true ||
+      (navigatorWithHints.deviceMemory ?? 8) <= 4 ||
+      (navigator.hardwareConcurrency ?? 8) <= 4;
+    const compactViewport = window.innerWidth <= 900;
+    const performanceProfile = {
+      lowPower: lowPowerDevice || compactViewport,
+      simplifiedVisuals: lowPowerDevice,
+      frameIntervalMs: lowPowerDevice ? 1000 / 30 : compactViewport ? 1000 / 40 : 0,
+      flockingNeighborStride: lowPowerDevice ? 2 : 1,
+      maxFlockingNeighbors: lowPowerDevice ? 18 : 32,
+      maxDpr: lowPowerDevice ? 1 : compactViewport ? 1.25 : 1.75,
+    };
 
-    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const dpr = Math.max(1, Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1));
 
     function getLoadCycleValue() {
       const primary = Math.sin(simulationTime * 0.18) * 0.18;
@@ -1345,6 +1392,8 @@ export default function PowerGridBackground() {
       const hallwayY = lanes.yPositions.length > 0
         ? lanes.yPositions
         : [clamp(height * 0.5, 96, height - 96)];
+      const topHallwayOffset = -18;
+      const bottomHallwayOffset = 30;
 
       if (hallwayY.length >= 2) {
         const topHallway = hallwayY[0];
@@ -1353,32 +1402,32 @@ export default function PowerGridBackground() {
           {
             kind: 'coal',
             x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway + topHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'generator',
             x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway + topHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'battery',
             x: clamp(lanes.leftLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(bottomHallway + bottomHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'lab',
             x: clamp(lanes.rightLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(bottomHallway + bottomHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'factory',
             x: clamp(lanes.centerLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(topHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(topHallway + topHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
           {
             kind: 'factory',
             x: clamp(lanes.centerLaneX, STRUCTURE_PADDING, width - STRUCTURE_PADDING),
-            y: clamp(bottomHallway, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
+            y: clamp(bottomHallway + bottomHallwayOffset, STRUCTURE_PADDING, height - STRUCTURE_PADDING),
           },
         ];
 
@@ -1874,10 +1923,17 @@ export default function PowerGridBackground() {
       let cohesionX = 0;
       let cohesionY = 0;
       let neighbors = 0;
+      const stride = performanceProfile.flockingNeighborStride;
+      const strideOffset = worker.id % stride;
 
-      world.workers.forEach((other) => {
+      for (let index = 0; index < world.workers.length; index += 1) {
+        const other = world.workers[index];
         if (other.id === worker.id) {
-          return;
+          continue;
+        }
+
+        if (stride > 1 && index % stride !== strideOffset) {
+          continue;
         }
 
         const dx = worker.x - other.x;
@@ -1885,7 +1941,7 @@ export default function PowerGridBackground() {
         const dist = Math.hypot(dx, dy);
 
         if (dist <= 0 || dist > 72) {
-          return;
+          continue;
         }
 
         neighbors += 1;
@@ -1895,7 +1951,10 @@ export default function PowerGridBackground() {
         alignmentY += other.vy;
         cohesionX += other.x;
         cohesionY += other.y;
-      });
+        if (neighbors >= performanceProfile.maxFlockingNeighbors) {
+          break;
+        }
+      }
 
       if (neighbors > 0) {
         alignmentX /= neighbors;
@@ -2532,7 +2591,9 @@ export default function PowerGridBackground() {
       ctx.save();
       clipToMap();
       drawGrid();
-      drawNetworkHints();
+      if (!performanceProfile.simplifiedVisuals) {
+        drawNetworkHints();
+      }
       world.structures.forEach(drawNode);
       world.workers.forEach(drawWorker);
       drawParticles();
@@ -2541,8 +2602,24 @@ export default function PowerGridBackground() {
     }
 
     function loop(now: number) {
+      if (document.visibilityState !== 'visible') {
+        previousTime = now;
+        lastRenderTime = now;
+        animationFrame = window.requestAnimationFrame(loop);
+        return;
+      }
+
+      if (
+        performanceProfile.frameIntervalMs > 0 &&
+        now - lastRenderTime < performanceProfile.frameIntervalMs
+      ) {
+        animationFrame = window.requestAnimationFrame(loop);
+        return;
+      }
+
       const dt = Math.min(0.05, (now - previousTime) / 1000);
       previousTime = now;
+      lastRenderTime = now;
       simulationTime += dt;
 
       updateSwarmStrategy(dt);
@@ -2560,7 +2637,7 @@ export default function PowerGridBackground() {
     }
 
     let layoutSyncFrame = 0;
-    const layoutObserver = new ResizeObserver(() => {
+    const scheduleLayoutSync = () => {
       if (layoutSyncFrame) {
         return;
       }
@@ -2569,7 +2646,8 @@ export default function PowerGridBackground() {
         layoutSyncFrame = 0;
         syncWorldToCurrentLayout();
       });
-    });
+    };
+    const layoutObserver = new ResizeObserver(scheduleLayoutSync);
 
     Array.from(document.querySelectorAll('.panel-shell, .page-main, .site-nav')).forEach((element) => {
       if (element instanceof HTMLElement) {
@@ -2579,6 +2657,7 @@ export default function PowerGridBackground() {
 
     resizeWorld();
     window.addEventListener('resize', resizeWorld);
+    window.addEventListener('scroll', scheduleLayoutSync, { passive: true });
     animationFrame = window.requestAnimationFrame(loop);
 
     return () => {
@@ -2588,6 +2667,7 @@ export default function PowerGridBackground() {
       }
       layoutObserver.disconnect();
       window.removeEventListener('resize', resizeWorld);
+      window.removeEventListener('scroll', scheduleLayoutSync);
     };
   }, []);
 

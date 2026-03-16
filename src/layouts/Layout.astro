@@ -24,7 +24,7 @@ const isHomePage = Astro.url.pathname === '/';
     <title>{title}</title>
   </head>
   <body class={isHomePage ? 'is-homepage' : undefined}>
-    <PowerGridBackground client:load />
+    <PowerGridBackground client:idle />
 
     <div class="site-root">
       <header class="site-nav">

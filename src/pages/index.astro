@@ -18,616 +18,213 @@ const heroGreetingLead = profile.greeting.endsWith(profile.name)
 
 <Layout title="Hrish Leen" description={profile.description}>
   <div class="home-stage" id="home-stage">
-    <svg class="home-stage-defs" width="0" height="0" aria-hidden="true" focusable="false">
-      <defs>
-        <clipPath id="home-stage-clip" clipPathUnits="userSpaceOnUse">
-          <rect data-clip-rect />
-        </clipPath>
-      </defs>
-    </svg>
+    <div class="panel panel-shell home-panel" data-panel-shell>
+      <section class="content-section" aria-labelledby="hero-title">
+        <div class="hero-top">
+          <img
+            class="hero-portrait"
+            src="/images/selfie.jpg"
+            alt="Photo of Hrish Leen"
+            width="144"
+            height="144"
+            loading="eager"
+          />
 
-    <div class="panel-shells" aria-hidden="true">
-      <div class="panel panel-shell" data-panel-shell></div>
-    </div>
+          <div class="hero-text">
+            <h1 id="hero-title" class="hero-title">
+              {heroGreetingLead} <span class="hero-title-name">{profile.name}</span>
+            </h1>
+            <p class="hero-subtitle">
+              {profile.title} at {profile.institution}
+            </p>
 
-    <div class="home-scroll-layer" id="home-scroll-layer">
-      <div class="home-scroll-track" id="home-scroll-track">
-        <section class="content-section" aria-labelledby="hero-title">
-          <div class="hero-top">
-            <img
-              class="hero-portrait"
-              src="/images/selfie.jpg"
-              alt="Photo of Hrish Leen"
-              width="144"
-              height="144"
-              loading="eager"
-            />
-
-            <div class="hero-text">
-              <h1 id="hero-title" class="hero-title">
-                {heroGreetingLead} <span class="hero-title-name">{profile.name}</span>
-              </h1>
-              <p class="hero-subtitle">
-                {profile.title} at {profile.institution}
-              </p>
-
-              <div class="link-row">
-                {profile.links.map((link) => (
-                  <a
-                    href={link.href}
-                    class="link-chip"
-                    download={link.download ? true : undefined}
-                    target={link.href.startsWith('http') ? '_blank' : undefined}
-                    rel={link.href.startsWith('http') ? 'noreferrer noopener' : undefined}
-                  >
-                    {link.label}
-                  </a>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {profile.intro.map((paragraph) => (
-            <p>{paragraph}</p>
-          ))}
-
-          <p class="section-kicker mt-3">{profile.interestsLabel}</p>
-          <div class="interest-list">
-            {profile.interests.map((interest) => (
-              <span class="interest-chip">{interest}</span>
-            ))}
-          </div>
-
-          <p class="mb-0 mt-3">{profile.simHint}</p>
-        </section>
-
-        <section id="research" class="content-section" aria-labelledby="research-title">
-          <div class="section-heading">
-            <p class="section-kicker">Featured Research</p>
-            <h2 id="research-title">Research Projects</h2>
-          </div>
-
-          <div class="research-stack">
-            {researchProjects.map((project) => (
-              <ResearchProject client:load {...project} />
-            ))}
-          </div>
-        </section>
-
-        <section class="content-section" aria-labelledby="resume-title">
-          <div class="section-heading">
-            <p class="section-kicker">Resume</p>
-            <h2 id="resume-title">Experience</h2>
-          </div>
-
-          <div class="timeline-group">
-            <div class="timeline-subsection">
-              <div class="timeline-list">
-                {experiences.map((experience) => (
-                  <article class="timeline-entry">
-                    {experience.logo && (
-                      <img
-                        class="timeline-logo"
-                        src={experience.logo.src}
-                        alt={experience.logo.alt}
-                        loading="lazy"
-                        width="52"
-                        height="52"
-                      />
-                    )}
-
-                    <div class="timeline-copy">
-                      <div class="timeline-heading-row">
-                        <h3>{experience.title}</h3>
-                        <span class="timeline-period">{experience.period}</span>
-                      </div>
-                      <p class="timeline-org">{experience.organization}</p>
-                      <p>{experience.description}</p>
-                      {experience.bullets.length > 0 && (
-                        <ul>
-                          {experience.bullets.map((bullet) => (
-                            <li>{bullet}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div class="timeline-subsection">
-              <h3>Education</h3>
-              <div class="timeline-list">
-                {education.map((entry) => (
-                  <article class="timeline-entry">
-                    {entry.logo && (
-                      <img
-                        class="timeline-logo"
-                        src={entry.logo.src}
-                        alt={entry.logo.alt}
-                        loading="lazy"
-                        width="52"
-                        height="52"
-                      />
-                    )}
-
-                    <div class="timeline-copy">
-                      <div class="timeline-heading-row">
-                        <h3>{entry.degree}</h3>
-                        <span class="timeline-period">{entry.period}</span>
-                      </div>
-                      <p class="timeline-org">{entry.institution}</p>
-
-                      {entry.details.length > 0 && (
-                        <p class="detail-inline">
-                          {entry.details.map((detail) => (
-                            <span>
-                              {detail.href ? (
-                                <a href={detail.href} target="_blank" rel="noreferrer noopener">
-                                  {detail.text}
-                                </a>
-                              ) : (
-                                detail.text
-                              )}
-                            </span>
-                          ))}
-                        </p>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-
-            <div class="timeline-subsection">
-              <h3>Teaching & Volunteering</h3>
-              <div class="timeline-list">
-                {volunteering.map((entry) => (
-                  <article class="timeline-entry">
-                    {entry.logo && (
-                      <img
-                        class="timeline-logo"
-                        src={entry.logo.src}
-                        alt={entry.logo.alt}
-                        loading="lazy"
-                        width="52"
-                        height="52"
-                      />
-                    )}
-
-                    <div class="timeline-copy">
-                      <div class="timeline-heading-row">
-                        <h3>{entry.title}</h3>
-                        <span class="timeline-period">{entry.period}</span>
-                      </div>
-                      <p class="timeline-org">{entry.organization}</p>
-                      <p>{entry.description}</p>
-                      {entry.bullets.length > 0 && (
-                        <ul>
-                          {entry.bullets.map((bullet) => (
-                            <li>{bullet}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="contact" class="content-section" aria-labelledby="contact-title">
-          <div class="section-heading">
-            <p class="section-kicker">{contactIntro.heading}</p>
-            <h2 id="contact-title">{contactIntro.sectionTitle}</h2>
-            <p>{contactIntro.subheading}</p>
-            <p class="mb-0">{contactIntro.body}</p>
-          </div>
-
-          <div class="contact-methods">
-            {contactMethods.map((method) => (
-              <article class="contact-method">
-                <h3>{method.title}</h3>
-                <p>{method.detail}</p>
-                <a href={method.href} target={method.href.startsWith('http') ? '_blank' : undefined} rel={method.href.startsWith('http') ? 'noreferrer noopener' : undefined}>
-                  {method.action}
+            <div class="link-row">
+              {profile.links.map((link) => (
+                <a
+                  href={link.href}
+                  class="link-chip"
+                  download={link.download ? true : undefined}
+                  target={link.href.startsWith('http') ? '_blank' : undefined}
+                  rel={link.href.startsWith('http') ? 'noreferrer noopener' : undefined}
+                >
+                  {link.label}
                 </a>
-              </article>
-            ))}
+              ))}
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
+
+        {profile.intro.map((paragraph) => (
+          <p>{paragraph}</p>
+        ))}
+
+        <p class="section-kicker mt-3">{profile.interestsLabel}</p>
+        <div class="interest-list">
+          {profile.interests.map((interest) => (
+            <span class="interest-chip">{interest}</span>
+          ))}
+        </div>
+
+        <p class="mb-0 mt-3">{profile.simHint}</p>
+      </section>
+
+      <section id="research" class="content-section" aria-labelledby="research-title">
+        <div class="section-heading">
+          <p class="section-kicker">Featured Research</p>
+          <h2 id="research-title">Research Projects</h2>
+        </div>
+
+        <div class="research-stack">
+          {researchProjects.map((project) => (
+            <ResearchProject client:visible {...project} />
+          ))}
+        </div>
+      </section>
+
+      <section class="content-section" aria-labelledby="resume-title">
+        <div class="section-heading">
+          <p class="section-kicker">Resume</p>
+          <h2 id="resume-title">Experience</h2>
+        </div>
+
+        <div class="timeline-group">
+          <div class="timeline-subsection">
+            <div class="timeline-list">
+              {experiences.map((experience) => (
+                <article class="timeline-entry">
+                  {experience.logo && (
+                    <img
+                      class="timeline-logo"
+                      src={experience.logo.src}
+                      alt={experience.logo.alt}
+                      loading="lazy"
+                      width="52"
+                      height="52"
+                    />
+                  )}
+
+                  <div class="timeline-copy">
+                    <div class="timeline-heading-row">
+                      <h3>{experience.title}</h3>
+                      <span class="timeline-period">{experience.period}</span>
+                    </div>
+                    <p class="timeline-org">{experience.organization}</p>
+                    <p>{experience.description}</p>
+                    {experience.bullets.length > 0 && (
+                      <ul>
+                        {experience.bullets.map((bullet) => (
+                          <li>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div class="timeline-subsection">
+            <h3>Education</h3>
+            <div class="timeline-list">
+              {education.map((entry) => (
+                <article class="timeline-entry">
+                  {entry.logo && (
+                    <img
+                      class="timeline-logo"
+                      src={entry.logo.src}
+                      alt={entry.logo.alt}
+                      loading="lazy"
+                      width="52"
+                      height="52"
+                    />
+                  )}
+
+                  <div class="timeline-copy">
+                    <div class="timeline-heading-row">
+                      <h3>{entry.degree}</h3>
+                      <span class="timeline-period">{entry.period}</span>
+                    </div>
+                    <p class="timeline-org">{entry.institution}</p>
+
+                    {entry.details.length > 0 && (
+                      <p class="detail-inline">
+                        {entry.details.map((detail) => (
+                          <span>
+                            {detail.href ? (
+                              <a href={detail.href} target="_blank" rel="noreferrer noopener">
+                                {detail.text}
+                              </a>
+                            ) : (
+                              detail.text
+                            )}
+                          </span>
+                        ))}
+                      </p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div class="timeline-subsection">
+            <h3>Teaching & Volunteering</h3>
+            <div class="timeline-list">
+              {volunteering.map((entry) => (
+                <article class="timeline-entry">
+                  {entry.logo && (
+                    <img
+                      class="timeline-logo"
+                      src={entry.logo.src}
+                      alt={entry.logo.alt}
+                      loading="lazy"
+                      width="52"
+                      height="52"
+                    />
+                  )}
+
+                  <div class="timeline-copy">
+                    <div class="timeline-heading-row">
+                      <h3>{entry.title}</h3>
+                      <span class="timeline-period">{entry.period}</span>
+                    </div>
+                    <p class="timeline-org">{entry.organization}</p>
+                    <p>{entry.description}</p>
+                    {entry.bullets.length > 0 && (
+                      <ul>
+                        {entry.bullets.map((bullet) => (
+                          <li>{bullet}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="contact" class="content-section" aria-labelledby="contact-title">
+        <div class="section-heading">
+          <p class="section-kicker">{contactIntro.heading}</p>
+          <h2 id="contact-title">{contactIntro.sectionTitle}</h2>
+          <p>{contactIntro.subheading}</p>
+          <p class="mb-0">{contactIntro.body}</p>
+        </div>
+
+        <div class="contact-methods">
+          {contactMethods.map((method) => (
+            <article class="contact-method">
+              <h3>{method.title}</h3>
+              <p>{method.detail}</p>
+              <a href={method.href} target={method.href.startsWith('http') ? '_blank' : undefined} rel={method.href.startsWith('http') ? 'noreferrer noopener' : undefined}>
+                {method.action}
+              </a>
+            </article>
+          ))}
+        </div>
+      </section>
     </div>
   </div>
-
-  <script is:inline>
-    (() => {
-      if (!document.body.classList.contains('is-homepage')) {
-        return;
-      }
-
-      const cleanupKey = '__homeVirtualScrollCleanup__';
-      if (typeof window[cleanupKey] === 'function') {
-        window[cleanupKey]();
-      }
-
-      const stage = document.getElementById('home-stage');
-      const pageMain = document.querySelector('.page-main');
-      const siteNav = document.querySelector('.site-nav');
-      const scrollLayer = document.getElementById('home-scroll-layer');
-      const scrollTrack = document.getElementById('home-scroll-track');
-      const shellElements = Array.from(document.querySelectorAll('[data-panel-shell]'));
-      const clipRects = Array.from(document.querySelectorAll('[data-clip-rect]'));
-
-      if (
-        !(stage instanceof HTMLElement) ||
-        !(scrollLayer instanceof HTMLElement) ||
-        !(scrollTrack instanceof HTMLElement) ||
-        shellElements.length === 0
-      ) {
-        return;
-      }
-
-      let scrollOffset = 0;
-      let targetScrollOffset = 0;
-      let maxScroll = 0;
-      let trackBaseTop = 0;
-      let visibleSpan = stage.clientHeight;
-      let activeTouchId = null;
-      let lastTouchY = 0;
-      let lastTouchTime = 0;
-      let touchVelocity = 0;
-      let scrollAnimationFrame = 0;
-
-      const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
-
-      const syncStageHeight = () => {
-        const mainHeight = pageMain instanceof HTMLElement
-          ? pageMain.getBoundingClientRect().height
-          : 0;
-        const fallbackNavHeight = siteNav instanceof HTMLElement
-          ? siteNav.getBoundingClientRect().height
-          : 0;
-        const availableHeight = Math.max(
-          320,
-          Math.round(mainHeight || (window.innerHeight - fallbackNavHeight)),
-        );
-        const headerHallwayHeight = Math.round(availableHeight * 0.09);
-        const footerHallwayHeight = Math.round(availableHeight * 0.09);
-        const panelHeight = Math.max(
-          0,
-          availableHeight - headerHallwayHeight - footerHallwayHeight,
-        );
-
-        stage.style.height = `${availableHeight}px`;
-        stage.style.setProperty('--header-hallway-height', `${headerHallwayHeight}px`);
-        stage.style.setProperty('--panel-height', `${panelHeight}px`);
-        stage.style.setProperty('--footer-hallway-height', `${footerHallwayHeight}px`);
-      };
-
-      const applyScroll = () => {
-        scrollTrack.style.transform = `translate3d(-50%, ${trackBaseTop - scrollOffset}px, 0)`;
-      };
-
-      const stopScrollAnimation = () => {
-        if (!scrollAnimationFrame) {
-          return;
-        }
-
-        window.cancelAnimationFrame(scrollAnimationFrame);
-        scrollAnimationFrame = 0;
-      };
-
-      const tickScroll = () => {
-        const delta = targetScrollOffset - scrollOffset;
-
-        if (activeTouchId === null && Math.abs(touchVelocity) > 0.01) {
-          targetScrollOffset = clampValue(targetScrollOffset + touchVelocity, 0, maxScroll);
-          touchVelocity *= 0.92;
-          if (targetScrollOffset === 0 || targetScrollOffset === maxScroll) {
-            touchVelocity *= 0.7;
-          }
-        }
-
-        const easing = activeTouchId === null ? 0.18 : 0.34;
-        if (Math.abs(delta) <= 0.25 && Math.abs(touchVelocity) <= 0.05) {
-          scrollOffset = targetScrollOffset;
-          applyScroll();
-          scrollAnimationFrame = 0;
-          return;
-        }
-
-        scrollOffset += delta * easing;
-        applyScroll();
-        scrollAnimationFrame = window.requestAnimationFrame(tickScroll);
-      };
-
-      const ensureScrollAnimation = () => {
-        if (scrollAnimationFrame) {
-          return;
-        }
-
-        scrollAnimationFrame = window.requestAnimationFrame(tickScroll);
-      };
-
-      const scrollToOffset = (nextOffset, options = {}) => {
-        const immediate = options.immediate === true;
-        targetScrollOffset = clampValue(nextOffset, 0, maxScroll);
-
-        if (immediate) {
-          stopScrollAnimation();
-          touchVelocity = 0;
-          scrollOffset = targetScrollOffset;
-          applyScroll();
-          return;
-        }
-
-        ensureScrollAnimation();
-      };
-
-      const scrollBy = (delta, options = {}) => {
-        if (!delta) {
-          return;
-        }
-
-        scrollToOffset(targetScrollOffset + delta, options);
-      };
-
-      const scrollToSection = (id) => {
-        const target = document.getElementById(id);
-        if (!(target instanceof HTMLElement)) {
-          return;
-        }
-
-        scrollToOffset(target.offsetTop);
-      };
-
-      const measureLayout = () => {
-        syncStageHeight();
-        const stageRect = stage.getBoundingClientRect();
-        const rects = shellElements
-          .map((element) => {
-            if (!(element instanceof HTMLElement)) {
-              return null;
-            }
-
-            const rect = element.getBoundingClientRect();
-            return {
-              left: rect.left - stageRect.left,
-              top: rect.top - stageRect.top,
-              right: rect.right - stageRect.left,
-              bottom: rect.bottom - stageRect.top,
-            };
-          })
-          .filter((rect) => rect !== null);
-
-        if (rects.length === 0) {
-          return;
-        }
-
-        trackBaseTop = rects[0].top;
-        visibleSpan = rects[rects.length - 1].bottom - rects[0].top;
-        maxScroll = Math.max(0, scrollTrack.offsetHeight - visibleSpan);
-        scrollOffset = clampValue(scrollOffset, 0, maxScroll);
-        targetScrollOffset = clampValue(targetScrollOffset, 0, maxScroll);
-
-        clipRects.forEach((clipRect, index) => {
-          if (!(clipRect instanceof SVGRectElement)) {
-            return;
-          }
-
-          const rect = rects[index];
-          if (!rect) {
-            clipRect.setAttribute('width', '0');
-            clipRect.setAttribute('height', '0');
-            return;
-          }
-
-          clipRect.setAttribute('x', `${rect.left}`);
-          clipRect.setAttribute('y', `${rect.top}`);
-          clipRect.setAttribute('width', `${rect.right - rect.left}`);
-          clipRect.setAttribute('height', `${rect.bottom - rect.top}`);
-        });
-
-        applyScroll();
-        scrollLayer.classList.add('is-ready');
-      };
-
-      const handleWheel = (event) => {
-        if (event.ctrlKey || !event.deltaY) {
-          return;
-        }
-
-        if (event.target instanceof Element && event.target.closest('.sim-hotbar')) {
-          return;
-        }
-
-        event.preventDefault();
-        scrollBy(event.deltaY);
-      };
-
-      const handleTouchStart = (event) => {
-        if (event.touches.length !== 1) {
-          activeTouchId = null;
-          return;
-        }
-
-        if (event.target instanceof Element && event.target.closest('.sim-hotbar')) {
-          activeTouchId = null;
-          return;
-        }
-
-        const touch = event.touches[0];
-        activeTouchId = touch.identifier;
-        lastTouchY = touch.clientY;
-        lastTouchTime = performance.now();
-        touchVelocity = 0;
-      };
-
-      const handleTouchMove = (event) => {
-        if (activeTouchId === null) {
-          return;
-        }
-
-        const touch = Array.from(event.touches).find((entry) => entry.identifier === activeTouchId);
-        if (!touch) {
-          return;
-        }
-
-        const now = performance.now();
-        const elapsed = Math.max(16, now - lastTouchTime);
-        const deltaY = lastTouchY - touch.clientY;
-        event.preventDefault();
-        scrollBy(deltaY * 1.08);
-        touchVelocity = clampValue((deltaY / elapsed) * 16, -28, 28);
-        lastTouchY = touch.clientY;
-        lastTouchTime = now;
-      };
-
-      const handleTouchEnd = (event) => {
-        if (activeTouchId === null) {
-          return;
-        }
-
-        const touchStillActive = Array.from(event.touches).some((entry) => entry.identifier === activeTouchId);
-        if (!touchStillActive) {
-          activeTouchId = null;
-          ensureScrollAnimation();
-        }
-      };
-
-      const handleKeyDown = (event) => {
-        if (event.metaKey || event.ctrlKey || event.altKey) {
-          return;
-        }
-
-        const activeElement = document.activeElement;
-        if (
-          activeElement instanceof HTMLElement &&
-          (activeElement.isContentEditable ||
-            ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement.tagName))
-        ) {
-          return;
-        }
-
-        if (activeElement instanceof Element && activeElement.closest('.sim-hotbar')) {
-          return;
-        }
-
-        const step = Math.max(96, visibleSpan * 0.35);
-        const keySteps = {
-          ArrowDown: step * 0.35,
-          ArrowUp: -step * 0.35,
-          PageDown: step,
-          PageUp: -step,
-          ' ': event.shiftKey ? -step : step,
-        };
-
-        if (event.key === 'Home') {
-          event.preventDefault();
-          scrollToOffset(0);
-          return;
-        }
-
-        if (event.key === 'End') {
-          event.preventDefault();
-          scrollToOffset(maxScroll);
-          return;
-        }
-
-        if (!(event.key in keySteps)) {
-          return;
-        }
-
-        event.preventDefault();
-        scrollBy(keySteps[event.key]);
-      };
-
-      const handleClick = (event) => {
-        const link = event.target instanceof Element
-          ? event.target.closest('a[href*="#"]')
-          : null;
-
-        if (!(link instanceof HTMLAnchorElement) || link.target === '_blank') {
-          return;
-        }
-
-        const nextUrl = new URL(link.href, window.location.href);
-        if (nextUrl.pathname !== window.location.pathname || !nextUrl.hash) {
-          return;
-        }
-
-        const id = decodeURIComponent(nextUrl.hash.slice(1));
-        if (!document.getElementById(id)) {
-          return;
-        }
-
-        event.preventDefault();
-        scrollToSection(id);
-        if (window.location.hash !== nextUrl.hash) {
-          history.replaceState(null, '', nextUrl.hash);
-        }
-      };
-
-      const handleHashChange = () => {
-        const id = decodeURIComponent(window.location.hash.slice(1));
-        if (!id) {
-          return;
-        }
-
-        scrollToSection(id);
-      };
-
-      const resizeObserver = new ResizeObserver(() => {
-        measureLayout();
-      });
-
-      if (pageMain instanceof HTMLElement) {
-        resizeObserver.observe(pageMain);
-      }
-      if (siteNav instanceof HTMLElement) {
-        resizeObserver.observe(siteNav);
-      }
-      resizeObserver.observe(stage);
-      resizeObserver.observe(scrollTrack);
-      shellElements.forEach((element) => {
-        if (element instanceof HTMLElement) {
-          resizeObserver.observe(element);
-        }
-      });
-
-      scrollLayer.style.clipPath = 'url(#home-stage-clip)';
-      scrollLayer.style.webkitClipPath = 'url(#home-stage-clip)';
-      measureLayout();
-      window.requestAnimationFrame(measureLayout);
-
-      window.addEventListener('wheel', handleWheel, { passive: false });
-      window.addEventListener('touchstart', handleTouchStart, { passive: true });
-      window.addEventListener('touchmove', handleTouchMove, { passive: false });
-      window.addEventListener('touchend', handleTouchEnd, { passive: true });
-      window.addEventListener('touchcancel', handleTouchEnd, { passive: true });
-      window.addEventListener('keydown', handleKeyDown);
-      document.addEventListener('click', handleClick);
-      window.addEventListener('hashchange', handleHashChange);
-
-      if (window.location.hash) {
-        handleHashChange();
-      }
-
-      window[cleanupKey] = () => {
-        stopScrollAnimation();
-        resizeObserver.disconnect();
-        window.removeEventListener('wheel', handleWheel);
-        window.removeEventListener('touchstart', handleTouchStart);
-        window.removeEventListener('touchmove', handleTouchMove);
-        window.removeEventListener('touchend', handleTouchEnd);
-        window.removeEventListener('touchcancel', handleTouchEnd);
-        window.removeEventListener('keydown', handleKeyDown);
-        document.removeEventListener('click', handleClick);
-        window.removeEventListener('hashchange', handleHashChange);
-      };
-    })();
-  </script>
 </Layout>
