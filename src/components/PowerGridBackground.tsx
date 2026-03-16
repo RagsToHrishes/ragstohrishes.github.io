@@ -153,8 +153,45 @@ type NavigationGrid = {
   cellSize: number;
   cols: number;
   rows: number;
-  blocked: boolean[];
+  blocked: Uint8Array;
   version: number;
+};
+
+type StructureCollections = {
+  coal: CoalPatch[];
+  generator: GeneratorNode[];
+  battery: BatteryNode[];
+  lab: LabNode[];
+  factory: FactoryNode[];
+};
+
+type StructureIndex = {
+  byId: Map<number, Structure>;
+  byKind: StructureCollections;
+};
+
+type ClaimCounts = {
+  toGenerator: Map<number, number>;
+  fromGenerator: Map<number, number>;
+  toBattery: Map<number, number>;
+  fromBattery: Map<number, number>;
+  toLab: Map<number, number>;
+  toFactory: Map<number, number>;
+};
+
+type PathfindingScratch = {
+  gScore: Float64Array;
+  fScore: Float64Array;
+  cameFrom: Int32Array;
+  seen: Uint32Array;
+  closed: Uint32Array;
+  mark: number;
+};
+
+type WorkerSpatialGrid = {
+  cells: Map<string, Set<number>>;
+  cols: number[];
+  rows: number[];
 };
 
 const COLORS = {
@@ -182,6 +219,18 @@ const WORKER_MALFUNCTION_RATE = 0.0095;
 const WORKER_FAILURE_RATE = 0.0017;
 const HISTORY_LENGTH = 24;
 const NAVIGATION_CELL_SIZE = 10;
+const FLOCKING_RADIUS = 72;
+const FLOCKING_CELL_SIZE = FLOCKING_RADIUS;
+const PATH_NEIGHBOR_STEPS = [
+  { dc: 1, dr: 0, cost: 1 },
+  { dc: -1, dr: 0, cost: 1 },
+  { dc: 0, dr: 1, cost: 1 },
+  { dc: 0, dr: -1, cost: 1 },
+  { dc: 1, dr: 1, cost: Math.SQRT2 },
+  { dc: -1, dr: 1, cost: Math.SQRT2 },
+  { dc: 1, dr: -1, cost: Math.SQRT2 },
+  { dc: -1, dr: -1, cost: Math.SQRT2 },
+] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -358,6 +407,86 @@ function layoutsMatch(previous: FixedMapLayout | null, next: FixedMapLayout, tol
     rectListsMatch(previous.panelRects, next.panelRects, tolerance);
 }
 
+function createStructureIndex(structures: Structure[]): StructureIndex {
+  const byId = new Map<number, Structure>();
+  const byKind: StructureCollections = {
+    coal: [],
+    generator: [],
+    battery: [],
+    lab: [],
+    factory: [],
+  };
+
+  structures.forEach((node) => {
+    byId.set(node.id, node);
+
+    switch (node.kind) {
+      case 'coal':
+        byKind.coal.push(node);
+        break;
+      case 'generator':
+        byKind.generator.push(node);
+        break;
+      case 'battery':
+        byKind.battery.push(node);
+        break;
+      case 'lab':
+        byKind.lab.push(node);
+        break;
+      case 'factory':
+        byKind.factory.push(node);
+        break;
+      default:
+        break;
+    }
+  });
+
+  return { byId, byKind };
+}
+
+function createClaimCounts(): ClaimCounts {
+  return {
+    toGenerator: new Map<number, number>(),
+    fromGenerator: new Map<number, number>(),
+    toBattery: new Map<number, number>(),
+    fromBattery: new Map<number, number>(),
+    toLab: new Map<number, number>(),
+    toFactory: new Map<number, number>(),
+  };
+}
+
+function adjustClaimCount(counter: Map<number, number>, id: number, delta: number) {
+  const nextValue = (counter.get(id) || 0) + delta;
+  if (nextValue <= 0) {
+    counter.delete(id);
+    return;
+  }
+
+  counter.set(id, nextValue);
+}
+
+function applyTaskClaimDelta(claims: ClaimCounts, task: Task, delta: number) {
+  switch (task.type) {
+    case 'fuel-generator':
+      adjustClaimCount(claims.toGenerator, task.targetId, delta);
+      break;
+    case 'charge-battery':
+      adjustClaimCount(claims.fromGenerator, task.sourceId, delta);
+      adjustClaimCount(claims.toBattery, task.targetId, delta);
+      break;
+    case 'power-lab':
+      adjustClaimCount(claims.fromBattery, task.sourceId, delta);
+      adjustClaimCount(claims.toLab, task.targetId, delta);
+      break;
+    case 'power-factory':
+      adjustClaimCount(claims.fromBattery, task.sourceId, delta);
+      adjustClaimCount(claims.toFactory, task.targetId, delta);
+      break;
+    default:
+      break;
+  }
+}
+
 function createWorker(id: number, x: number, y: number): Worker {
   return {
     id,
@@ -497,11 +626,13 @@ function deriveMetrics(world: World, statusOverride?: string): Metrics {
 
 export default function PowerGridBackground() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const structureIndexRef = useRef<StructureIndex>(createStructureIndex([]));
   const obstacleRectsRef = useRef<ObstacleRect[]>([]);
   const mapLayoutRef = useRef<FixedMapLayout | null>(null);
   const navigationGridRef = useRef<NavigationGrid | null>(null);
   const navigationVersionRef = useRef(0);
   const pathCacheRef = useRef(new Map<string, RoutePoint[]>());
+  const pathfindingScratchRef = useRef<PathfindingScratch | null>(null);
   const worldRef = useRef<World>({
     width: 0,
     height: 0,
@@ -556,12 +687,12 @@ export default function PowerGridBackground() {
   }, [isHelpOpen, isMenuMinimized]);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = canvasRef.current!;
     if (!canvas) {
       return;
     }
 
-    const ctx = canvas.getContext('2d', { alpha: true });
+    const ctx = canvas.getContext('2d', { alpha: true })!;
     if (!ctx) {
       return;
     }
@@ -571,6 +702,7 @@ export default function PowerGridBackground() {
     let lastRenderTime = 0;
     let statsTimer = 0;
     let simulationTime = 0;
+    let backgroundSceneCanvas: HTMLCanvasElement | null = null;
     let gridCacheCanvas: HTMLCanvasElement | null = null;
     const navigatorWithHints = navigator as Navigator & {
       connection?: { saveData?: boolean };
@@ -583,14 +715,13 @@ export default function PowerGridBackground() {
       (navigatorWithHints.deviceMemory ?? 8) <= 4 ||
       (navigator.hardwareConcurrency ?? 8) <= 4;
     const compactViewport = window.innerWidth <= 900;
-    const veryLargeViewport = window.innerWidth * window.innerHeight >= 2_000_000 || window.innerWidth >= 1680;
     const performanceProfile = {
       lowPower: lowPowerDevice || compactViewport,
-      simplifiedVisuals: lowPowerDevice || veryLargeViewport,
-      frameIntervalMs: lowPowerDevice ? 1000 / 30 : compactViewport ? 1000 / 40 : veryLargeViewport ? 1000 / 30 : 1000 / 45,
-      flockingNeighborStride: lowPowerDevice ? 2 : veryLargeViewport ? 2 : 1,
-      maxFlockingNeighbors: lowPowerDevice ? 18 : veryLargeViewport ? 18 : 24,
-      maxDpr: lowPowerDevice ? 1 : veryLargeViewport ? 1 : compactViewport ? 1.1 : 1.25,
+      simplifiedVisuals: lowPowerDevice,
+      frameIntervalMs: lowPowerDevice ? 1000 / 30 : compactViewport ? 1000 / 40 : 0,
+      flockingNeighborStride: lowPowerDevice ? 2 : 1,
+      maxFlockingNeighbors: lowPowerDevice ? 18 : 32,
+      maxDpr: lowPowerDevice ? 1 : compactViewport ? 1.25 : 1.75,
     };
 
     const dpr = Math.max(1, Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1));
@@ -883,7 +1014,7 @@ export default function PowerGridBackground() {
       const cellSize = NAVIGATION_CELL_SIZE;
       const cols = Math.max(1, Math.ceil(width / cellSize));
       const rows = Math.max(1, Math.ceil(height / cellSize));
-      const blocked = new Array(cols * rows).fill(false);
+      const blocked = new Uint8Array(cols * rows);
       const padding = WORKER_RADIUS;
 
       obstacles.forEach((rect) => {
@@ -894,7 +1025,7 @@ export default function PowerGridBackground() {
 
         for (let row = minRow; row <= maxRow; row += 1) {
           for (let col = minCol; col <= maxCol; col += 1) {
-            blocked[row * cols + col] = true;
+            blocked[row * cols + col] = 1;
           }
         }
       });
@@ -954,6 +1085,36 @@ export default function PowerGridBackground() {
       return null;
     }
 
+    function getPathfindingScratch(totalCells: number): PathfindingScratch {
+      let scratch = pathfindingScratchRef.current;
+
+      if (!scratch || scratch.gScore.length < totalCells) {
+        scratch = {
+          gScore: new Float64Array(totalCells),
+          fScore: new Float64Array(totalCells),
+          cameFrom: new Int32Array(totalCells),
+          seen: new Uint32Array(totalCells),
+          closed: new Uint32Array(totalCells),
+          mark: 0,
+        };
+        pathfindingScratchRef.current = scratch;
+      }
+
+      if (!scratch) {
+        throw new Error('Unable to initialize pathfinding scratch buffers.');
+      }
+
+      if (scratch.mark >= 0xFFFFFFFE) {
+        scratch.seen.fill(0);
+        scratch.closed.fill(0);
+        scratch.mark = 1;
+      } else {
+        scratch.mark += 1;
+      }
+
+      return scratch;
+    }
+
     function refreshMapLayout(width: number, height: number) {
       const layout = buildFixedMapLayout(width, height);
       const layoutChanged = !layoutsMatch(mapLayoutRef.current, layout);
@@ -976,6 +1137,7 @@ export default function PowerGridBackground() {
           navigationVersionRef.current,
         );
         pathCacheRef.current.clear();
+        backgroundSceneCanvas = null;
       }
 
       return layout;
@@ -1003,38 +1165,95 @@ export default function PowerGridBackground() {
       }
 
       const totalCells = grid.cols * grid.rows;
-      const gScore = new Array(totalCells).fill(Number.POSITIVE_INFINITY);
-      const fScore = new Array(totalCells).fill(Number.POSITIVE_INFINITY);
-      const cameFrom = new Array<number>(totalCells).fill(-1);
-      const openSet = new Set<number>();
+      const scratch = getPathfindingScratch(totalCells);
+      const { gScore, fScore, cameFrom, seen, closed, mark } = scratch;
+      const openHeapIndices: number[] = [];
+      const openHeapScores: number[] = [];
+
+      function pushOpenCell(index: number, score: number) {
+        let cursor = openHeapIndices.length;
+        openHeapIndices.push(index);
+        openHeapScores.push(score);
+
+        while (cursor > 0) {
+          const parent = (cursor - 1) >> 1;
+          if (openHeapScores[parent] <= score) {
+            break;
+          }
+
+          openHeapIndices[cursor] = openHeapIndices[parent];
+          openHeapScores[cursor] = openHeapScores[parent];
+          cursor = parent;
+        }
+
+        openHeapIndices[cursor] = index;
+        openHeapScores[cursor] = score;
+      }
+
+      function popOpenCell() {
+        if (openHeapIndices.length === 0) {
+          return null;
+        }
+
+        const index = openHeapIndices[0];
+        const score = openHeapScores[0];
+        const lastIndex = openHeapIndices.pop()!;
+        const lastScore = openHeapScores.pop()!;
+
+        if (openHeapIndices.length > 0) {
+          let cursor = 0;
+
+          while (true) {
+            const left = cursor * 2 + 1;
+            if (left >= openHeapIndices.length) {
+              break;
+            }
+
+            const right = left + 1;
+            const child =
+              right < openHeapIndices.length && openHeapScores[right] < openHeapScores[left]
+                ? right
+                : left;
+
+            if (openHeapScores[child] >= lastScore) {
+              break;
+            }
+
+            openHeapIndices[cursor] = openHeapIndices[child];
+            openHeapScores[cursor] = openHeapScores[child];
+            cursor = child;
+          }
+
+          openHeapIndices[cursor] = lastIndex;
+          openHeapScores[cursor] = lastScore;
+        }
+
+        return { index, score };
+      }
 
       const startIndex = getCellIndex(grid, start.col, start.row);
       const goalIndex = getCellIndex(grid, goal.col, goal.row);
       gScore[startIndex] = 0;
       fScore[startIndex] = Math.hypot(goal.col - start.col, goal.row - start.row);
-      openSet.add(startIndex);
+      cameFrom[startIndex] = -1;
+      seen[startIndex] = mark;
+      closed[startIndex] = 0;
+      pushOpenCell(startIndex, fScore[startIndex]);
 
-      const neighborSteps = [
-        { dc: 1, dr: 0, cost: 1 },
-        { dc: -1, dr: 0, cost: 1 },
-        { dc: 0, dr: 1, cost: 1 },
-        { dc: 0, dr: -1, cost: 1 },
-        { dc: 1, dr: 1, cost: Math.SQRT2 },
-        { dc: -1, dr: 1, cost: Math.SQRT2 },
-        { dc: 1, dr: -1, cost: Math.SQRT2 },
-        { dc: -1, dr: -1, cost: Math.SQRT2 },
-      ];
+      while (openHeapIndices.length > 0) {
+        const currentCell = popOpenCell();
+        if (!currentCell) {
+          break;
+        }
 
-      while (openSet.size > 0) {
-        let currentIndex = -1;
-        let currentScore = Number.POSITIVE_INFINITY;
-
-        openSet.forEach((candidate) => {
-          if (fScore[candidate] < currentScore) {
-            currentScore = fScore[candidate];
-            currentIndex = candidate;
-          }
-        });
+        const currentIndex = currentCell.index;
+        if (
+          seen[currentIndex] !== mark ||
+          closed[currentIndex] === mark ||
+          currentCell.score > fScore[currentIndex]
+        ) {
+          continue;
+        }
 
         if (currentIndex === goalIndex) {
           const pathCells: RoutePoint[] = [];
@@ -1056,12 +1275,12 @@ export default function PowerGridBackground() {
           return [...pathCells, { x: endX, y: endY }];
         }
 
-        openSet.delete(currentIndex);
+        closed[currentIndex] = mark;
 
         const currentCol = currentIndex % grid.cols;
         const currentRow = Math.floor(currentIndex / grid.cols);
 
-        neighborSteps.forEach(({ dc, dr, cost }) => {
+        PATH_NEIGHBOR_STEPS.forEach(({ dc, dr, cost }) => {
           const nextCol = currentCol + dc;
           const nextRow = currentRow + dr;
 
@@ -1079,9 +1298,13 @@ export default function PowerGridBackground() {
           }
 
           const neighborIndex = getCellIndex(grid, nextCol, nextRow);
+          if (closed[neighborIndex] === mark) {
+            return;
+          }
+
           const tentativeScore = gScore[currentIndex] + cost;
 
-          if (tentativeScore >= gScore[neighborIndex]) {
+          if (seen[neighborIndex] === mark && tentativeScore >= gScore[neighborIndex]) {
             return;
           }
 
@@ -1089,7 +1312,8 @@ export default function PowerGridBackground() {
           gScore[neighborIndex] = tentativeScore;
           fScore[neighborIndex] =
             tentativeScore + Math.hypot(goal.col - nextCol, goal.row - nextRow);
-          openSet.add(neighborIndex);
+          seen[neighborIndex] = mark;
+          pushOpenCell(neighborIndex, fScore[neighborIndex]);
         });
       }
 
@@ -1236,6 +1460,7 @@ export default function PowerGridBackground() {
         return;
       }
 
+      backgroundSceneCanvas = null;
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
@@ -1275,13 +1500,17 @@ export default function PowerGridBackground() {
     }
 
     function clipToMap() {
+      clipContextToMap(ctx);
+    }
+
+    function clipContextToMap(targetCtx: CanvasRenderingContext2D) {
       const world = worldRef.current;
-      ctx.beginPath();
-      ctx.rect(0, 0, world.width, world.height);
+      targetCtx.beginPath();
+      targetCtx.rect(0, 0, world.width, world.height);
       obstacleRectsRef.current.forEach((rect) => {
-        ctx.rect(rect.left, rect.top, rect.width, rect.height);
+        targetCtx.rect(rect.left, rect.top, rect.width, rect.height);
       });
-      ctx.clip('evenodd');
+      targetCtx.clip('evenodd');
     }
 
     function nextId() {
@@ -1290,12 +1519,16 @@ export default function PowerGridBackground() {
       return id;
     }
 
-    function getNodes(kind: StructureKind) {
-      return worldRef.current.structures.filter((node) => node.kind === kind);
+    function refreshStructureIndex() {
+      structureIndexRef.current = createStructureIndex(worldRef.current.structures);
+    }
+
+    function getNodes<T extends StructureKind>(kind: T): StructureCollections[T] {
+      return structureIndexRef.current.byKind[kind];
     }
 
     function findNode(id: number) {
-      return worldRef.current.structures.find((node) => node.id === id);
+      return structureIndexRef.current.byId.get(id);
     }
 
     function addRipple(x: number, y: number, color: string) {
@@ -1546,6 +1779,9 @@ export default function PowerGridBackground() {
       world.workers = [];
       world.ripples = [];
       world.particles = [];
+      refreshStructureIndex();
+      backgroundSceneCanvas = null;
+      gridCacheCanvas = null;
 
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
@@ -1600,6 +1836,7 @@ export default function PowerGridBackground() {
       canvas.style.height = `${nextHeight}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.imageSmoothingEnabled = false;
+      backgroundSceneCanvas = null;
       gridCacheCanvas = null;
       refreshMapLayout(nextWidth, nextHeight);
 
@@ -1644,64 +1881,17 @@ export default function PowerGridBackground() {
     }
 
     function getClaimCounts() {
-      const toGenerator = new Map<number, number>();
-      const fromGenerator = new Map<number, number>();
-      const toBattery = new Map<number, number>();
-      const fromBattery = new Map<number, number>();
-      const toLab = new Map<number, number>();
-      const toFactory = new Map<number, number>();
+      const claims = createClaimCounts();
 
       worldRef.current.workers.forEach((worker) => {
         if (!worker.task) {
           return;
         }
 
-        if (worker.task.type === 'fuel-generator') {
-          toGenerator.set(
-            worker.task.targetId,
-            (toGenerator.get(worker.task.targetId) || 0) + 1,
-          );
-        }
-
-        if (worker.task.type === 'charge-battery') {
-          fromGenerator.set(
-            worker.task.sourceId,
-            (fromGenerator.get(worker.task.sourceId) || 0) + 1,
-          );
-          toBattery.set(
-            worker.task.targetId,
-            (toBattery.get(worker.task.targetId) || 0) + 1,
-          );
-        }
-
-        if (worker.task.type === 'power-lab') {
-          fromBattery.set(
-            worker.task.sourceId,
-            (fromBattery.get(worker.task.sourceId) || 0) + 1,
-          );
-          toLab.set(worker.task.targetId, (toLab.get(worker.task.targetId) || 0) + 1);
-        }
-
-        if (worker.task.type === 'power-factory') {
-          fromBattery.set(
-            worker.task.sourceId,
-            (fromBattery.get(worker.task.sourceId) || 0) + 1,
-          );
-          toFactory.set(
-            worker.task.targetId,
-            (toFactory.get(worker.task.targetId) || 0) + 1,
-          );
-        }
+        applyTaskClaimDelta(claims, worker.task, 1);
       });
 
-      return {
-        toGenerator,
-        fromGenerator,
-        toBattery,
-        fromBattery,
-        toLab,
-        toFactory,
-      };
+      return claims;
     }
 
     function getTaskPriorityProfile(
@@ -1939,7 +2129,8 @@ export default function PowerGridBackground() {
         });
       });
 
-      worker.task = chosen?.task ?? null;
+      const selectedTask = (chosen as { score: number; task: Task } | null)?.task ?? null;
+      worker.task = selectedTask;
       clearWorkerRoute(worker);
     }
 
@@ -1954,7 +2145,74 @@ export default function PowerGridBackground() {
       worker.vy += (desiredY - worker.vy) * Math.min(1, dt * 2.4);
     }
 
-    function applyFlocking(worker: Worker, dt: number) {
+    function getWorkerSpatialCellKey(col: number, row: number) {
+      return `${col},${row}`;
+    }
+
+    function buildWorkerSpatialGrid(workers: Worker[]): WorkerSpatialGrid {
+      const cells = new Map<string, Set<number>>();
+      const cols = new Array<number>(workers.length);
+      const rows = new Array<number>(workers.length);
+
+      for (let index = 0; index < workers.length; index += 1) {
+        const worker = workers[index];
+        const col = Math.floor(worker.x / FLOCKING_CELL_SIZE);
+        const row = Math.floor(worker.y / FLOCKING_CELL_SIZE);
+        const key = getWorkerSpatialCellKey(col, row);
+        let bucket = cells.get(key);
+
+        if (!bucket) {
+          bucket = new Set<number>();
+          cells.set(key, bucket);
+        }
+
+        bucket.add(index);
+        cols[index] = col;
+        rows[index] = row;
+      }
+
+      return { cells, cols, rows };
+    }
+
+    function updateWorkerSpatialGridPosition(
+      grid: WorkerSpatialGrid,
+      workerIndex: number,
+      worker: Worker,
+    ) {
+      const nextCol = Math.floor(worker.x / FLOCKING_CELL_SIZE);
+      const nextRow = Math.floor(worker.y / FLOCKING_CELL_SIZE);
+      const previousCol = grid.cols[workerIndex];
+      const previousRow = grid.rows[workerIndex];
+
+      if (nextCol === previousCol && nextRow === previousRow) {
+        return;
+      }
+
+      const previousKey = getWorkerSpatialCellKey(previousCol, previousRow);
+      const previousBucket = grid.cells.get(previousKey);
+      previousBucket?.delete(workerIndex);
+      if (previousBucket && previousBucket.size === 0) {
+        grid.cells.delete(previousKey);
+      }
+
+      const nextKey = getWorkerSpatialCellKey(nextCol, nextRow);
+      let nextBucket = grid.cells.get(nextKey);
+      if (!nextBucket) {
+        nextBucket = new Set<number>();
+        grid.cells.set(nextKey, nextBucket);
+      }
+
+      nextBucket.add(workerIndex);
+      grid.cols[workerIndex] = nextCol;
+      grid.rows[workerIndex] = nextRow;
+    }
+
+    function applyFlocking(
+      worker: Worker,
+      dt: number,
+      workerSpatialGrid: WorkerSpatialGrid,
+      workerIndex: number,
+    ) {
       const world = worldRef.current;
       let separationX = 0;
       let separationY = 0;
@@ -1965,8 +2223,27 @@ export default function PowerGridBackground() {
       let neighbors = 0;
       const stride = performanceProfile.flockingNeighborStride;
       const strideOffset = worker.id % stride;
+      const candidateIndices: number[] = [];
+      const workerCol = workerSpatialGrid.cols[workerIndex];
+      const workerRow = workerSpatialGrid.rows[workerIndex];
 
-      for (let index = 0; index < world.workers.length; index += 1) {
+      for (let row = workerRow - 1; row <= workerRow + 1; row += 1) {
+        for (let col = workerCol - 1; col <= workerCol + 1; col += 1) {
+          const bucket = workerSpatialGrid.cells.get(getWorkerSpatialCellKey(col, row));
+          if (!bucket) {
+            continue;
+          }
+
+          bucket.forEach((index) => {
+            candidateIndices.push(index);
+          });
+        }
+      }
+
+      candidateIndices.sort((first, second) => first - second);
+
+      for (let candidateIndex = 0; candidateIndex < candidateIndices.length; candidateIndex += 1) {
+        const index = candidateIndices[candidateIndex];
         const other = world.workers[index];
         if (other.id === worker.id) {
           continue;
@@ -1980,7 +2257,7 @@ export default function PowerGridBackground() {
         const dy = worker.y - other.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist <= 0 || dist > 72) {
+        if (dist <= 0 || dist > FLOCKING_RADIUS) {
           continue;
         }
 
@@ -2171,10 +2448,12 @@ export default function PowerGridBackground() {
       const deadWorkerIds = new Set<number>();
       const desiredWorkers = currentStrategy.desiredWorkers;
       const loadFactor = getLoadCycleValue();
+      const workerSpatialGrid = buildWorkerSpatialGrid(world.workers);
 
-      world.workers.forEach((worker) => {
+      for (let workerIndex = 0; workerIndex < world.workers.length; workerIndex += 1) {
+        const worker = world.workers[workerIndex];
         if (deadWorkerIds.has(worker.id)) {
-          return;
+          continue;
         }
 
         if (worker.malfunctionTimer > 0) {
@@ -2190,7 +2469,7 @@ export default function PowerGridBackground() {
         if (Math.random() < failureRate * dt) {
           deadWorkerIds.add(worker.id);
           removeWorkerWithBurst(worker);
-          return;
+          continue;
         }
 
         if (worker.malfunctionTimer <= 0 && Math.random() < malfunctionRate * dt) {
@@ -2210,7 +2489,7 @@ export default function PowerGridBackground() {
           assignTask(worker);
         }
 
-        applyFlocking(worker, dt);
+        applyFlocking(worker, dt, workerSpatialGrid, workerIndex);
 
         if (worker.malfunctionTimer > 0) {
           worker.wanderSeed += dt * 2.8;
@@ -2289,7 +2568,8 @@ export default function PowerGridBackground() {
         if (speed > 2) {
           worker.angle = Math.atan2(worker.vy, worker.vx);
         }
-      });
+        updateWorkerSpatialGridPosition(workerSpatialGrid, workerIndex, worker);
+      }
 
       if (deadWorkerIds.size > 0) {
         world.workers = world.workers.filter((worker) => !deadWorkerIds.has(worker.id));
@@ -2331,6 +2611,40 @@ export default function PowerGridBackground() {
 
       if (gridCacheCanvas) {
         ctx.drawImage(gridCacheCanvas, 0, 0, world.width, world.height);
+      }
+    }
+
+    function drawBackgroundScene() {
+      const world = worldRef.current;
+
+      if (!backgroundSceneCanvas) {
+        backgroundSceneCanvas = document.createElement('canvas');
+        backgroundSceneCanvas.width = Math.max(1, Math.floor(world.width));
+        backgroundSceneCanvas.height = Math.max(1, Math.floor(world.height));
+
+        const backgroundCtx = backgroundSceneCanvas.getContext('2d');
+        if (!backgroundCtx) {
+          backgroundSceneCanvas = null;
+          return;
+        }
+
+        backgroundCtx.fillStyle = COLORS.paper;
+        backgroundCtx.fillRect(0, 0, world.width, world.height);
+
+        if (!gridCacheCanvas) {
+          drawGrid();
+        }
+
+        if (gridCacheCanvas) {
+          backgroundCtx.save();
+          clipContextToMap(backgroundCtx);
+          backgroundCtx.drawImage(gridCacheCanvas, 0, 0, world.width, world.height);
+          backgroundCtx.restore();
+        }
+      }
+
+      if (backgroundSceneCanvas) {
+        ctx.drawImage(backgroundSceneCanvas, 0, 0, world.width, world.height);
       }
     }
 
@@ -2638,12 +2952,10 @@ export default function PowerGridBackground() {
     function drawScene() {
       const world = worldRef.current;
       ctx.clearRect(0, 0, world.width, world.height);
-      ctx.fillStyle = COLORS.paper;
-      ctx.fillRect(0, 0, world.width, world.height);
+      drawBackgroundScene();
 
       ctx.save();
       clipToMap();
-      drawGrid();
       if (!performanceProfile.simplifiedVisuals) {
         drawNetworkHints();
       }
