@@ -1,9 +1,10 @@
 .projectCard {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-lg);
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: start;
+  gap: 0.95rem;
   width: 100%;
-  padding: var(--spacing-lg);
+  padding: 1rem 1.05rem;
   background: rgba(255, 255, 255, 0.74);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -22,9 +23,9 @@
 }
 
 .projectMedia {
-  flex: 0 0 220px;
-  width: 220px;
-  min-height: 180px;
+  width: 180px;
+  height: 120px;
+  min-height: 120px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -49,7 +50,7 @@
 }
 
 .mediaContentVideo {
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .projectContent {
@@ -57,7 +58,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.5rem;
 }
 
 .projectTitle {
@@ -104,7 +105,7 @@
 
 .projectDescription {
   color: var(--color-text-secondary);
-  line-height: 1.7;
+  line-height: 1.55;
 }
 
 .projectTags {
@@ -185,12 +186,13 @@
 
 @media (max-width: 860px) {
   .projectCard {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .projectMedia {
     width: 100%;
-    flex-basis: auto;
+    height: 180px;
+    min-height: 180px;
   }
 }
 

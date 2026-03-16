@@ -68,12 +68,24 @@ type Worker = {
   routeKey: string | null;
   routeVersion: number;
   malfunctionTimer: number;
+  idleTargetId: number | null;
+  idleTargetTimer: number;
 };
 
 type Ripple = {
   x: number;
   y: number;
   life: number;
+  color: string;
+};
+
+type BurstParticle = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  size: number;
   color: string;
 };
 
@@ -84,6 +96,7 @@ type World = {
   structures: Structure[];
   workers: Worker[];
   ripples: Ripple[];
+  particles: BurstParticle[];
 };
 
 type Metrics = {
@@ -148,12 +161,14 @@ const WORKER_RADIUS = 5;
 const STRUCTURE_PADDING = 22;
 const OBSTACLE_REPULSION_RANGE = 34;
 const MAX_GENERATOR_OUTPUT = 5;
-const WORKER_CAP = 50;
+const WORKER_CAP = 100;
+const WORKER_TARGET_BASE = 60;
+const WORKER_TARGET_SWING = 10;
 const FACTORY_CHARGE_PER_CELL = 28;
-const FACTORY_POWER_DRAIN = 5.5;
-const FACTORY_BUILD_RATE = 6.5;
-const WORKER_MALFUNCTION_RATE = 0.008;
-const WORKER_FAILURE_RATE = 0.0012;
+const FACTORY_POWER_DRAIN = 7.4;
+const FACTORY_BUILD_RATE = 9.2;
+const WORKER_MALFUNCTION_RATE = 0.0095;
+const WORKER_FAILURE_RATE = 0.0017;
 const HISTORY_LENGTH = 24;
 
 function clamp(value: number, min: number, max: number) {
@@ -293,6 +308,8 @@ function createWorker(id: number, x: number, y: number): Worker {
     routeKey: null,
     routeVersion: 0,
     malfunctionTimer: 0,
+    idleTargetId: null,
+    idleTargetTimer: 0,
   };
 }
 
@@ -421,6 +438,7 @@ export default function PowerGridBackground() {
     structures: [],
     workers: [],
     ripples: [],
+    particles: [],
   });
 
   const [isHelpOpen, setIsHelpOpen] = useState(false);
@@ -480,8 +498,23 @@ export default function PowerGridBackground() {
     let animationFrame = 0;
     let previousTime = performance.now();
     let statsTimer = 0;
+    let simulationTime = 0;
 
     const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+    function getLoadCycleValue() {
+      const primary = Math.sin(simulationTime * 0.18) * 0.18;
+      const secondary = Math.sin(simulationTime * 0.47 + 1.4) * 0.1;
+      return clamp(0.52 + primary + secondary, 0.2, 0.88);
+    }
+
+    function getDesiredWorkerCount() {
+      const target =
+        WORKER_TARGET_BASE +
+        Math.sin(simulationTime * 0.16 + 0.4) * WORKER_TARGET_SWING +
+        (getLoadCycleValue() - 0.5) * 8;
+      return clamp(Math.round(target), 42, 72);
+    }
 
     function clearWorkerRoute(worker: Worker) {
       worker.route = [];
@@ -724,25 +757,74 @@ export default function PowerGridBackground() {
       const nextRouteKey = worker.task
         ? `${worker.task.type}:${worker.task.phase}:${worker.task.sourceId}:${worker.task.targetId}`
         : null;
+      ensureRoute(worker, nextRouteKey, target.x, target.y);
+    }
+
+    function ensureRoute(
+      worker: Worker,
+      routeKey: string | null,
+      targetX: number,
+      targetY: number,
+    ) {
       const currentRouteVersion = navigationVersionRef.current;
 
-      if (!nextRouteKey) {
+      if (!routeKey) {
         clearWorkerRoute(worker);
         return;
       }
 
       if (
-        worker.routeKey === nextRouteKey &&
+        worker.routeKey === routeKey &&
         worker.route.length > 0 &&
         worker.routeVersion === currentRouteVersion
       ) {
         return;
       }
 
-      worker.route = planPath(worker.x, worker.y, target.x, target.y);
+      worker.route = planPath(worker.x, worker.y, targetX, targetY);
       worker.routeIndex = 0;
-      worker.routeKey = nextRouteKey;
+      worker.routeKey = routeKey;
       worker.routeVersion = currentRouteVersion;
+    }
+
+    function advanceWorkerRoute(worker: Worker, targetX: number, targetY: number) {
+      while (worker.routeIndex < worker.route.length - 1) {
+        const waypoint = worker.route[worker.routeIndex];
+        if (!waypoint || distance(worker.x, worker.y, waypoint.x, waypoint.y) > 18) {
+          break;
+        }
+
+        worker.routeIndex += 1;
+      }
+
+      return worker.route[worker.routeIndex] ?? { x: targetX, y: targetY };
+    }
+
+    function chooseIdleTarget(worker: Worker) {
+      const structures = worldRef.current.structures;
+      if (structures.length === 0) {
+        worker.idleTargetId = null;
+        return null;
+      }
+
+      const minimumTravel = Math.min(worldRef.current.width, worldRef.current.height) * 0.16;
+      const candidates = structures.filter((node) => (
+        node.id !== worker.idleTargetId &&
+        distance(worker.x, worker.y, node.x, node.y) >= minimumTravel
+      ));
+      const pool = candidates.length > 0
+        ? candidates
+        : structures.filter((node) => node.id !== worker.idleTargetId);
+
+      const targetPool = pool.length > 0 ? pool : structures;
+      const weightedIndex = Math.floor(
+        ((Math.sin(worker.wanderSeed + worker.wobble * 0.001) + 1) * 0.5) * targetPool.length,
+      );
+      const nextTarget = targetPool[clamp(weightedIndex, 0, targetPool.length - 1)];
+      worker.idleTargetId = nextTarget?.id ?? null;
+      worker.idleTargetTimer = 2.2 + ((Math.cos(worker.wobble * 0.002 + worker.wanderSeed) + 1) * 0.5) * 2.4;
+      clearWorkerRoute(worker);
+      return nextTarget ?? null;
     }
 
     function pushPointOutOfObstacles(
@@ -956,10 +1038,27 @@ export default function PowerGridBackground() {
       addRipple(worker.x, worker.y, COLORS.lime);
     }
 
+    function spawnExplosion(x: number, y: number) {
+      for (let index = 0; index < 10; index += 1) {
+        const angle = (index / 10) * Math.PI * 2 + Math.random() * 0.4;
+        const speed = 42 + Math.random() * 52;
+        worldRef.current.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          size: 2 + Math.random() * 2.2,
+          color: index % 3 === 0 ? COLORS.lime : index % 2 === 0 ? COLORS.green : COLORS.ink,
+        });
+      }
+    }
+
     function removeWorkerWithBurst(worker: Worker) {
       addRipple(worker.x, worker.y, COLORS.ink);
       addRipple(worker.x + 4, worker.y - 4, COLORS.lime);
       addRipple(worker.x - 4, worker.y + 4, COLORS.ink);
+      spawnExplosion(worker.x, worker.y);
     }
 
     function getDefaultLanes(width: number, height: number) {
@@ -1090,6 +1189,7 @@ export default function PowerGridBackground() {
       world.structures = buildInitialStructures(lanes, width, height);
       world.workers = [];
       world.ripples = [];
+      world.particles = [];
 
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
@@ -1107,7 +1207,7 @@ export default function PowerGridBackground() {
         });
       }
 
-      const workersPerAnchor = 5;
+      const workersPerAnchor = 12;
       const workerCount = workerAnchors.length * workersPerAnchor;
       for (let index = 0; index < workerCount; index += 1) {
         const anchor = workerAnchors[index % workerAnchors.length];
@@ -1167,6 +1267,13 @@ export default function PowerGridBackground() {
       world.ripples.forEach((ripple) => {
         ripple.x *= scaleX;
         ripple.y *= scaleY;
+      });
+
+      world.particles.forEach((particle) => {
+        particle.x *= scaleX;
+        particle.y *= scaleY;
+        particle.vx *= scaleX;
+        particle.vy *= scaleY;
       });
 
       world.structures.forEach((node) => {
@@ -1240,6 +1347,75 @@ export default function PowerGridBackground() {
       };
     }
 
+    function getTaskPriorityProfile(
+      world: World,
+      generators: GeneratorNode[],
+      batteries: BatteryNode[],
+      labs: LabNode[],
+      factories: FactoryNode[],
+      desiredWorkers: number,
+    ) {
+      const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
+      const totalCells =
+        generators.reduce((sum, node) => sum + node.outputCells, 0) +
+        batteries.reduce((sum, node) => sum + node.charge, 0);
+      const totalLabEnergy = labs.reduce((sum, node) => sum + node.energy, 0);
+      const totalFactoryCharge = factories.reduce((sum, node) => sum + node.charge, 0);
+      const averageFuel = generators.length > 0 ? totalFuel / generators.length : 0;
+      const totalCellCapacity =
+        generators.length * MAX_GENERATOR_OUTPUT +
+        batteries.reduce((sum, node) => sum + node.capacity, 0);
+      const cellsPct = totalCellCapacity > 0 ? (totalCells / totalCellCapacity) * 100 : 0;
+      const averageLabEnergy = labs.length > 0 ? totalLabEnergy / labs.length : 0;
+      const averageFactoryCharge = factories.length > 0 ? totalFactoryCharge / factories.length : 0;
+      const crewNeed = clamp(
+        (desiredWorkers - world.workers.length) / Math.max(1, desiredWorkers),
+        0,
+        1,
+      );
+      const fuelNeed = clamp((66 - averageFuel) / 66, 0, 1);
+      const cellNeed = clamp((58 - cellsPct) / 58, 0, 1);
+      const labNeed = clamp((72 - averageLabEnergy) / 72, 0, 1);
+      const factoryNeed = clamp(
+        crewNeed * 0.6 + clamp((65 - averageFactoryCharge) / 65, 0, 1) * 0.4,
+        0,
+        1,
+      );
+      const status = deriveMetrics(world).status;
+      const weights: Record<TaskType, number> = {
+        'fuel-generator': 0.9 + fuelNeed * 1.4,
+        'charge-battery': 0.9 + cellNeed * 1.3,
+        'power-lab': 0.9 + labNeed * 1.35,
+        'power-factory': 0.85 + factoryNeed * 1.45,
+      };
+
+      if (status === 'Fuel low') {
+        weights['fuel-generator'] *= 2.25;
+        weights['charge-battery'] *= 0.8;
+        weights['power-lab'] *= 0.58;
+        weights['power-factory'] *= 0.7;
+      } else if (status === 'Balancing load') {
+        weights['charge-battery'] *= 2.05;
+        weights['fuel-generator'] *= 1.2;
+        weights['power-lab'] *= 0.82;
+      } else if (status === 'Labs are draining') {
+        weights['power-lab'] *= 2.1;
+        weights['charge-battery'] *= 1.18;
+      } else if (status === 'Factory starved') {
+        weights['power-factory'] *= 2.2;
+        weights['power-lab'] *= 0.82;
+      } else if (status === 'Crew faults') {
+        weights['power-factory'] *= 1.95;
+        weights['fuel-generator'] *= 1.12;
+      }
+
+      return {
+        desiredWorkers,
+        status,
+        weights,
+      };
+    }
+
     function assignTask(worker: Worker) {
       const world = worldRef.current;
       const coalPatches = getNodes('coal') as CoalPatch[];
@@ -1248,6 +1424,15 @@ export default function PowerGridBackground() {
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
       const claims = getClaimCounts();
+      const desiredWorkers = getDesiredWorkerCount();
+      const priority = getTaskPriorityProfile(
+        world,
+        generators,
+        batteries,
+        labs,
+        factories,
+        desiredWorkers,
+      );
 
       let chosen: { score: number; task: Task } | null = null;
 
@@ -1272,7 +1457,7 @@ export default function PowerGridBackground() {
         const travelPenalty =
           distance(worker.x, worker.y, source.x, source.y) * 0.35 +
           distance(source.x, source.y, generator.x, generator.y) * 0.45;
-        const score = urgency * 260 - travelPenalty;
+        const score = urgency * 260 * priority.weights['fuel-generator'] - travelPenalty;
 
         if (!chosen || score > chosen.score) {
           chosen = {
@@ -1303,7 +1488,7 @@ export default function PowerGridBackground() {
           const travelPenalty =
             distance(worker.x, worker.y, generator.x, generator.y) * 0.35 +
             distance(generator.x, generator.y, battery.x, battery.y) * 0.45;
-          const score = urgency * 200 - travelPenalty;
+          const score = urgency * 200 * priority.weights['charge-battery'] - travelPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -1335,7 +1520,7 @@ export default function PowerGridBackground() {
           const travelPenalty =
             distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, lab.x, lab.y) * 0.45;
-          const score = urgency * 240 - travelPenalty;
+          const score = urgency * 240 * priority.weights['power-lab'] - travelPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -1353,7 +1538,11 @@ export default function PowerGridBackground() {
 
       batteries.forEach((battery) => {
         const availableCells = battery.charge - (claims.fromBattery.get(battery.id) || 0);
-        if (availableCells <= 0 || factories.length === 0 || world.workers.length >= WORKER_CAP) {
+        if (
+          availableCells <= 0 ||
+          factories.length === 0 ||
+          world.workers.length >= priority.desiredWorkers + 6
+        ) {
           return;
         }
 
@@ -1364,12 +1553,16 @@ export default function PowerGridBackground() {
             return;
           }
 
-          const workerDemand = (WORKER_CAP - world.workers.length) / WORKER_CAP;
+          const workerDemand = clamp(
+            (priority.desiredWorkers - world.workers.length) / priority.desiredWorkers,
+            0,
+            1,
+          );
           const urgency = workerDemand * 0.75 + ((100 - factory.charge) / 100) * 0.25;
           const travelPenalty =
             distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, factory.x, factory.y) * 0.45;
-          const score = urgency * 215 - travelPenalty;
+          const score = urgency * 215 * priority.weights['power-factory'] - travelPenalty;
 
           if (!chosen || score > chosen.score) {
             chosen = {
@@ -1448,19 +1641,9 @@ export default function PowerGridBackground() {
     }
 
     function updateWorkerTask(worker: Worker, target: Structure, dt: number) {
-      const speed = worker.carrying ? 84 : 92;
+      const speed = worker.carrying ? 121 : 132;
       ensureWorkerRoute(worker, target);
-
-      while (worker.routeIndex < worker.route.length - 1) {
-        const waypoint = worker.route[worker.routeIndex];
-        if (!waypoint || distance(worker.x, worker.y, waypoint.x, waypoint.y) > 18) {
-          break;
-        }
-
-        worker.routeIndex += 1;
-      }
-
-      const nextWaypoint = worker.route[worker.routeIndex] ?? { x: target.x, y: target.y };
+      const nextWaypoint = advanceWorkerRoute(worker, target.x, target.y);
       steerTo(worker, nextWaypoint.x, nextWaypoint.y, speed, dt);
 
       if (distance(worker.x, worker.y, target.x, target.y) > target.size + 10) {
@@ -1543,12 +1726,14 @@ export default function PowerGridBackground() {
       const generators = getNodes('generator') as GeneratorNode[];
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
+      const loadFactor = getLoadCycleValue();
+      const desiredWorkers = getDesiredWorkerCount();
 
       generators.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.6);
         if (node.fuel > 0) {
-          node.production += dt * 0.55;
-          node.fuel = clamp(node.fuel - dt * 3.8, 0, 100);
+          node.production += dt * (0.36 + loadFactor * 0.44);
+          node.fuel = clamp(node.fuel - dt * (2.6 + loadFactor * 2.8), 0, 100);
           if (node.production >= 1 && node.outputCells < MAX_GENERATOR_OUTPUT) {
             node.production -= 1;
             node.outputCells += 1;
@@ -1561,7 +1746,7 @@ export default function PowerGridBackground() {
 
       labs.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.2);
-        node.energy = clamp(node.energy - dt * 4.4, 0, 100);
+        node.energy = clamp(node.energy - dt * (2.8 + loadFactor * 4.9), 0, 100);
         if (node.energy > 16) {
           node.pulse = Math.max(node.pulse, 0.18);
         }
@@ -1569,8 +1754,8 @@ export default function PowerGridBackground() {
 
       factories.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.3);
-        if (worldRef.current.workers.length >= WORKER_CAP) {
-          node.buildProgress = Math.max(0, node.buildProgress - dt * 1.2);
+        if (worldRef.current.workers.length >= desiredWorkers + 4) {
+          node.buildProgress = Math.max(0, node.buildProgress - dt * 2.2);
           return;
         }
 
@@ -1579,11 +1764,12 @@ export default function PowerGridBackground() {
           return;
         }
 
-        node.charge = clamp(node.charge - dt * FACTORY_POWER_DRAIN, 0, 100);
-        node.buildProgress = clamp(node.buildProgress + dt * FACTORY_BUILD_RATE, 0, 100);
+        const buildDemand = clamp((desiredWorkers - worldRef.current.workers.length) / desiredWorkers, 0.08, 1);
+        node.charge = clamp(node.charge - dt * FACTORY_POWER_DRAIN * buildDemand, 0, 100);
+        node.buildProgress = clamp(node.buildProgress + dt * FACTORY_BUILD_RATE * buildDemand, 0, 100);
         node.pulse = Math.max(node.pulse, 0.2);
 
-        if (node.buildProgress >= 100) {
+        if (node.buildProgress >= 100 && worldRef.current.workers.length < WORKER_CAP) {
           node.buildProgress = Math.max(0, node.buildProgress - 100);
           spawnWorkerNearFactory(node);
           node.pulse = 1;
@@ -1595,6 +1781,15 @@ export default function PowerGridBackground() {
         ripple.life -= dt * 1.5;
       });
 
+      worldRef.current.particles = worldRef.current.particles.filter((particle) => particle.life > 0.02);
+      worldRef.current.particles.forEach((particle) => {
+        particle.life -= dt * 2.2;
+        particle.x += particle.vx * dt;
+        particle.y += particle.vy * dt;
+        particle.vx *= 0.96;
+        particle.vy *= 0.96;
+      });
+
       worldRef.current.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
@@ -1603,6 +1798,8 @@ export default function PowerGridBackground() {
     function updateWorkers(dt: number) {
       const world = worldRef.current;
       const deadWorkerIds = new Set<number>();
+      const desiredWorkers = getDesiredWorkerCount();
+      const loadFactor = getLoadCycleValue();
 
       world.workers.forEach((worker) => {
         if (deadWorkerIds.has(worker.id)) {
@@ -1613,14 +1810,19 @@ export default function PowerGridBackground() {
           worker.malfunctionTimer = Math.max(0, worker.malfunctionTimer - dt);
         }
 
-        const failureRate = WORKER_FAILURE_RATE * (worker.malfunctionTimer > 0 ? 1.8 : 1);
+        const populationPressure = clamp((world.workers.length - desiredWorkers) / desiredWorkers, -0.5, 0.75);
+        const malfunctionRate = WORKER_MALFUNCTION_RATE * (0.7 + loadFactor * 0.9);
+        const failureRate =
+          WORKER_FAILURE_RATE *
+          (1 + Math.max(0, populationPressure) * 1.6) *
+          (worker.malfunctionTimer > 0 ? 1.8 : 1);
         if (Math.random() < failureRate * dt) {
           deadWorkerIds.add(worker.id);
           removeWorkerWithBurst(worker);
           return;
         }
 
-        if (worker.malfunctionTimer <= 0 && Math.random() < WORKER_MALFUNCTION_RATE * dt) {
+        if (worker.malfunctionTimer <= 0 && Math.random() < malfunctionRate * dt) {
           triggerWorkerMalfunction(worker);
         }
 
@@ -1643,7 +1845,7 @@ export default function PowerGridBackground() {
           worker.wanderSeed += dt * 2.8;
           const faultX = worker.x + Math.cos(worker.wanderSeed * 3.5 + worker.wobble) * 16;
           const faultY = worker.y + Math.sin(worker.wanderSeed * 4.2 + worker.wobble) * 12;
-          steerTo(worker, faultX, faultY, 24, dt);
+          steerTo(worker, faultX, faultY, 29, dt);
           worker.vx += (Math.random() - 0.5) * 46 * dt;
           worker.vy += (Math.random() - 0.5) * 46 * dt;
         } else if (worker.task) {
@@ -1656,19 +1858,32 @@ export default function PowerGridBackground() {
             updateWorkerTask(worker, target, dt);
           }
         } else {
-          worker.wanderSeed += dt * (0.7 + worker.wobble * 0.00005);
-          const idleAnchor = world.structures.reduce<Structure | null>((best, node) => {
-            if (!best) {
-              return node;
-            }
-            return distance(worker.x, worker.y, node.x, node.y) <
-              distance(worker.x, worker.y, best.x, best.y)
-              ? node
-              : best;
-          }, null);
-          const idleX = (idleAnchor?.x ?? world.width * 0.2) + Math.cos(worker.wanderSeed) * 44;
-          const idleY = (idleAnchor?.y ?? world.height * 0.5) + Math.sin(worker.wanderSeed * 1.2) * 28;
-          steerTo(worker, idleX, idleY, 54, dt);
+          worker.wanderSeed += dt * (0.9 + worker.wobble * 0.00005);
+          worker.idleTargetTimer = Math.max(0, worker.idleTargetTimer - dt);
+          let idleTarget = worker.idleTargetId ? findNode(worker.idleTargetId) : null;
+
+          if (
+            !idleTarget ||
+            worker.idleTargetTimer <= 0 ||
+            distance(worker.x, worker.y, idleTarget.x, idleTarget.y) < idleTarget.size + 18
+          ) {
+            idleTarget = chooseIdleTarget(worker);
+          }
+
+          if (idleTarget) {
+            ensureRoute(worker, `idle:${idleTarget.id}`, idleTarget.x, idleTarget.y);
+            const nextWaypoint = advanceWorkerRoute(worker, idleTarget.x, idleTarget.y);
+            const offsetAngle = worker.wobble * 0.003 + worker.wanderSeed * 0.35;
+            const targetX = idleTarget.x + Math.cos(offsetAngle) * 22;
+            const targetY = idleTarget.y + Math.sin(offsetAngle) * 18;
+            const steerPoint =
+              distance(nextWaypoint.x, nextWaypoint.y, idleTarget.x, idleTarget.y) < 12
+                ? { x: targetX, y: targetY }
+                : nextWaypoint;
+            steerTo(worker, steerPoint.x, steerPoint.y, 91, dt);
+          } else {
+            steerTo(worker, world.width * 0.5, world.height * 0.5, 60, dt);
+          }
         }
 
         applyObstacleAvoidance(worker, dt);
@@ -1686,7 +1901,7 @@ export default function PowerGridBackground() {
         worker.vy *= 0.985;
 
         const speed = Math.hypot(worker.vx, worker.vy);
-        const maxSpeed = worker.carrying ? 96 : 108;
+        const maxSpeed = worker.carrying ? 138 : 156;
         if (speed > maxSpeed) {
           worker.vx = (worker.vx / speed) * maxSpeed;
           worker.vy = (worker.vy / speed) * maxSpeed;
@@ -1962,11 +2177,6 @@ export default function PowerGridBackground() {
       ctx.translate(x, y);
       ctx.rotate(worker.angle);
 
-      ctx.fillStyle = 'rgba(66, 66, 66, 0.12)';
-      ctx.beginPath();
-      ctx.ellipse(0, 6, 6, 3, 0, 0, Math.PI * 2);
-      ctx.fill();
-
       const isMalfunctioning = worker.malfunctionTimer > 0;
       ctx.strokeStyle = isMalfunctioning ? COLORS.ink : COLORS.green;
       ctx.lineWidth = 1.2;
@@ -2015,6 +2225,21 @@ export default function PowerGridBackground() {
       ctx.restore();
     }
 
+    function drawParticles() {
+      worldRef.current.particles.forEach((particle) => {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, particle.life);
+        ctx.fillStyle = particle.color;
+        ctx.fillRect(
+          Math.round(particle.x - particle.size * 0.5),
+          Math.round(particle.y - particle.size * 0.5),
+          particle.size,
+          particle.size,
+        );
+        ctx.restore();
+      });
+    }
+
     function drawRipples() {
       worldRef.current.ripples.forEach((ripple) => {
         const size = (1 - ripple.life) * 26;
@@ -2038,6 +2263,7 @@ export default function PowerGridBackground() {
       drawNetworkHints();
       world.structures.forEach(drawNode);
       world.workers.forEach(drawWorker);
+      drawParticles();
       drawRipples();
       ctx.restore();
     }
@@ -2045,6 +2271,7 @@ export default function PowerGridBackground() {
     function loop(now: number) {
       const dt = Math.min(0.05, (now - previousTime) / 1000);
       previousTime = now;
+      simulationTime += dt;
 
       updateStructures(dt);
       updateWorkers(dt);
@@ -2150,13 +2377,14 @@ export default function PowerGridBackground() {
           <section id="boid-help-panel" className="sim-hotbar__help">
             <h2 className="sim-hotbar__help-title">How it works</h2>
             <p className="sim-hotbar__help-copy">
-              The worker-boids run the grid on their own. Coal feeds generators, generators make cells, batteries route them to labs and the factory, and the factory rebuilds the swarm when workers fail.
+              The worker-boids act like a homeostatic controller for the whole system. They continuously shift work to keep fuel, stored cells, lab energy, and worker count near healthy ranges instead of letting any one resource collapse.
             </p>
             <ul className="sim-hotbar__help-list">
-              <li><span className="sim-hotbar__token">Power</span> and <span className="sim-hotbar__token">Cells</span> show whether the energy chain is holding up.</li>
-              <li><span className="sim-hotbar__token">Workers</span> tracks the live crew against the 50-worker cap, including faults.</li>
-              <li><span className="sim-hotbar__token">Factory</span> shows how much charge and build progress the replacement line has available.</li>
-              <li>The hallway routes stay adaptive, so the swarm replans as the page layout shifts.</li>
+              <li><span className="sim-hotbar__token">Fuel low</span> pushes more workers toward coal and generators.</li>
+              <li><span className="sim-hotbar__token">Balancing load</span> shifts attention toward moving energy into batteries.</li>
+              <li><span className="sim-hotbar__token">Labs are draining</span> redirects traffic from storage into lab power.</li>
+              <li><span className="sim-hotbar__token">Factory</span> becomes a higher priority when workers malfunction or the crew count falls.</li>
+              <li>The hallway routes stay adaptive, so the swarm replans as the page layout changes and keeps returning toward equilibrium.</li>
             </ul>
           </section>
         )}

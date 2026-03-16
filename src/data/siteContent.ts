@@ -57,6 +57,7 @@ export const profile = {
   interests: [
     'Robot Learning',
     'Reinforcement Learning',
+    'Multi-Agent Systems',
     'World Models',
     'Dexterous Manipulation',
   ],
@@ -77,14 +78,9 @@ export const profile = {
       label: 'LinkedIn',
       href: 'https://www.linkedin.com/in/hrish-leen-1451a71b8/',
     },
-    {
-      label: 'Resume',
-      href: '/resume.pdf',
-      download: true,
-    },
   ],
   simHint:
-    'The background is an ambient worker-boid power grid. Use the hotbar in the bottom left to place coal patches, generators, batteries, and labs and watch the swarm keep the system running.',
+    'The background is an ambient worker-boid power grid. The swarm keeps power, cells, workers, and factory output in balance while the dashboard tracks the cycles.',
 };
 
 export const researchProjects: ResearchProjectEntry[] = [
@@ -187,6 +183,17 @@ export const researchProjects: ResearchProjectEntry[] = [
 ];
 
 export const experiences: TimelineEntry[] = [
+  {
+    title: 'Graduate Intern',
+    organization: 'Jet Propulsion Laboratory',
+    period: 'Feb 2026 - Present',
+    description: 'Developing reinforcement learning for dual-body mobile manipulation on rover platforms.',
+    bullets: [],
+    logo: {
+      src: '/logos/JPL.png',
+      alt: 'Jet Propulsion Laboratory logo',
+    },
+  },
   {
     title: 'Graduate Researcher',
     organization: 'People, AI & Robots @ Georgia Tech',
