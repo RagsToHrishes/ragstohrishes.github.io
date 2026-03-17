@@ -367,24 +367,57 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   const bottomHallwayMin = bottomPanelRect ? bottomPanelRect.bottom + hallwayToPanelGap : viewportHeight * 0.76;
   const bottomHallwayMax = footerRect ? footerRect.top - hallwayToChromeGap : viewportHeight - 64;
 
-  const hallwayY = [
-    clamp(
-      topHallwayMin <= topHallwayMax
-        ? (topHallwayMin + topHallwayMax) * 0.5
-        : topHallwayMin,
+  const minimumHallwaySeparation = compactViewport ? 72 : 24;
+  let topHallwayY = clamp(
+    topHallwayMin <= topHallwayMax
+      ? (topHallwayMin + topHallwayMax) * 0.5
+      : topHallwayMin,
+    56,
+    viewportHeight - 56,
+  );
+  let bottomHallwayY = clamp(
+    bottomHallwayMin <= bottomHallwayMax
+      ? (bottomHallwayMin + bottomHallwayMax) * 0.5
+      : bottomHallwayMax,
+    56,
+    viewportHeight - 56,
+  );
+
+  if (bottomHallwayY - topHallwayY < minimumHallwaySeparation) {
+    const desiredBottom = clamp(
+      topHallwayY + minimumHallwaySeparation,
       56,
       viewportHeight - 56,
-    ),
-    clamp(
-      bottomHallwayMin <= bottomHallwayMax
-        ? (bottomHallwayMin + bottomHallwayMax) * 0.5
-        : bottomHallwayMax,
+    );
+    const desiredTop = clamp(
+      bottomHallwayY - minimumHallwaySeparation,
       56,
       viewportHeight - 56,
-    ),
-  ].filter((lane, index, lanes) => (
-    index === 0 || Math.abs(lane - lanes[index - 1]) > 24
-  ));
+    );
+    const canPushBottom = desiredBottom <= bottomHallwayMax;
+    const canPullTop = desiredTop >= topHallwayMin;
+
+    if (canPushBottom) {
+      bottomHallwayY = desiredBottom;
+    } else if (canPullTop) {
+      topHallwayY = desiredTop;
+    } else {
+      topHallwayY = clamp(
+        Math.min(topHallwayY, viewportHeight * 0.32),
+        56,
+        viewportHeight - 56 - minimumHallwaySeparation,
+      );
+      bottomHallwayY = clamp(
+        Math.max(bottomHallwayY, topHallwayY + minimumHallwaySeparation),
+        topHallwayY + minimumHallwaySeparation,
+        viewportHeight - 56,
+      );
+    }
+  }
+
+  const hallwayY = bottomHallwayY - topHallwayY > 16
+    ? [topHallwayY, bottomHallwayY]
+    : [topHallwayY];
 
   const leftEdge = Math.min(...panelRects.map((rect) => rect.left));
   const rightEdge = Math.max(...panelRects.map((rect) => rect.right));
