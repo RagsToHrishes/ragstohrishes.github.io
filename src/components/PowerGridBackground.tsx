@@ -226,8 +226,11 @@ const COLORS = {
   softInk: 'rgba(66, 66, 66, 0.22)',
 };
 
-const WORKER_RADIUS = 8;
-const WORKER_MIN_SEPARATION = WORKER_RADIUS * 2 + 4;
+const DEFAULT_WORKER_RADIUS = 8;
+const SMALL_SCREEN_WORKER_RADIUS = 5;
+const SMALL_SCREEN_BREAKPOINT = 900;
+const SMALL_SCREEN_WORKER_SCALE = 0.5;
+const WORKER_MIN_SEPARATION_PADDING = 4;
 const LOCAL_AVOIDANCE_RADIUS = 32;
 const LOCAL_AVOIDANCE_LOOKAHEAD = 0.22;
 const LOCAL_AVOIDANCE_MAX_NEIGHBORS = 18;
@@ -831,7 +834,7 @@ export default function PowerGridBackground() {
       navigatorWithHints.connection?.saveData === true ||
       (navigatorWithHints.deviceMemory ?? 8) <= 4 ||
       (navigator.hardwareConcurrency ?? 8) <= 4;
-    const compactViewport = window.innerWidth <= 900;
+    const compactViewport = window.innerWidth <= SMALL_SCREEN_BREAKPOINT;
     const performanceProfile = {
       lowPower: lowPowerDevice || compactViewport,
       simplifiedVisuals: lowPowerDevice,
@@ -870,6 +873,22 @@ export default function PowerGridBackground() {
       { key: 'fault-cell', malfunctioning: true, carrying: 'cell' },
     ];
     const workerSpriteCache = new Map<string, HTMLCanvasElement[]>();
+
+    function isSmallScreenViewport() {
+      return (worldRef.current.width || window.innerWidth) <= SMALL_SCREEN_BREAKPOINT;
+    }
+
+    function getWorkerRadius() {
+      return isSmallScreenViewport() ? SMALL_SCREEN_WORKER_RADIUS : DEFAULT_WORKER_RADIUS;
+    }
+
+    function getWorkerMinSeparation() {
+      return getWorkerRadius() * 2 + WORKER_MIN_SEPARATION_PADDING;
+    }
+
+    function getWorkerSpriteScale() {
+      return isSmallScreenViewport() ? SMALL_SCREEN_WORKER_SCALE : 1;
+    }
 
     function getLoadCycleValue() {
       const primary = Math.sin(simulationTime * 0.18) * 0.18;
@@ -1151,7 +1170,7 @@ export default function PowerGridBackground() {
       const cols = Math.max(1, Math.ceil(width / cellSize));
       const rows = Math.max(1, Math.ceil(height / cellSize));
       const blocked = new Uint8Array(cols * rows);
-      const padding = WORKER_RADIUS;
+      const padding = getWorkerRadius();
 
       obstacles.forEach((rect) => {
         const minCol = clamp(Math.floor((rect.left - padding) / cellSize), 0, cols - 1);
@@ -1659,7 +1678,7 @@ export default function PowerGridBackground() {
       });
 
       world.workers.forEach((worker) => {
-        if (constrainPointToMap(worker, WORKER_RADIUS)) {
+        if (constrainPointToMap(worker, getWorkerRadius())) {
           worker.vx *= 0.72;
           worker.vy *= 0.72;
         }
@@ -1674,13 +1693,14 @@ export default function PowerGridBackground() {
       const travel = getPreferredTravelDirection(worker);
       const projectedX = worker.x + worker.vx * OBSTACLE_LOOKAHEAD;
       const projectedY = worker.y + worker.vy * OBSTACLE_LOOKAHEAD;
+      const workerRadius = getWorkerRadius();
 
       for (let index = 0; index < obstacles.length; index += 1) {
         const rect = obstacles[index];
-        const left = rect.left - WORKER_RADIUS;
-        const right = rect.right + WORKER_RADIUS;
-        const top = rect.top - WORKER_RADIUS;
-        const bottom = rect.bottom + WORKER_RADIUS;
+        const left = rect.left - workerRadius;
+        const right = rect.right + workerRadius;
+        const top = rect.top - workerRadius;
+        const bottom = rect.bottom + workerRadius;
         const nearestX = clamp(projectedX, left, right);
         const nearestY = clamp(projectedY, top, bottom);
         let dx = projectedX - nearestX;
@@ -1839,7 +1859,7 @@ export default function PowerGridBackground() {
         factory.x + Math.cos(angle) * distanceFromFactory,
         factory.y + Math.sin(angle) * distanceFromFactory,
       );
-      constrainPointToMap(worker, WORKER_RADIUS);
+      constrainPointToMap(worker, getWorkerRadius());
       worldRef.current.workers.push(worker);
       addRipple(factory.x, factory.y, COLORS.green);
     }
@@ -2054,7 +2074,7 @@ export default function PowerGridBackground() {
       }
 
       world.workers.forEach((worker) => {
-        constrainPointToMap(worker, WORKER_RADIUS);
+        constrainPointToMap(worker, getWorkerRadius());
       });
 
       publishMetrics(world);
@@ -2124,7 +2144,7 @@ export default function PowerGridBackground() {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
       world.workers.forEach((worker) => {
-        constrainPointToMap(worker, WORKER_RADIUS);
+        constrainPointToMap(worker, getWorkerRadius());
       });
       clearAllWorkerRoutes();
       publishMetrics(world);
@@ -2498,13 +2518,14 @@ export default function PowerGridBackground() {
       let pressureX = 0;
       let pressureY = 0;
       const obstacles = obstacleRectsRef.current;
+      const workerRadius = getWorkerRadius();
 
       for (let index = 0; index < obstacles.length; index += 1) {
         const rect = obstacles[index];
-        const left = rect.left - WORKER_RADIUS;
-        const right = rect.right + WORKER_RADIUS;
-        const top = rect.top - WORKER_RADIUS;
-        const bottom = rect.bottom + WORKER_RADIUS;
+        const left = rect.left - workerRadius;
+        const right = rect.right + workerRadius;
+        const top = rect.top - workerRadius;
+        const bottom = rect.bottom + workerRadius;
         const nearestX = clamp(x, left, right);
         const nearestY = clamp(y, top, bottom);
         let dx = x - nearestX;
@@ -2643,7 +2664,9 @@ export default function PowerGridBackground() {
     }
 
     function resolveWorkerCrowding(workers: Worker[], passes = 3) {
-      const minSeparationSq = WORKER_MIN_SEPARATION * WORKER_MIN_SEPARATION;
+      const workerRadius = getWorkerRadius();
+      const workerMinSeparation = getWorkerMinSeparation();
+      const minSeparationSq = workerMinSeparation * workerMinSeparation;
       for (let pass = 0; pass < passes; pass += 1) {
         const workerSpatialGrid = buildWorkerSpatialGrid(workers);
         let movedAnyWorker = false;
@@ -2675,7 +2698,7 @@ export default function PowerGridBackground() {
 
                 movedAnyWorker = true;
                 const safeDist = distSq > 0.000001 ? Math.sqrt(distSq) : 0.001;
-                const overlap = WORKER_MIN_SEPARATION - safeDist;
+                const overlap = workerMinSeparation - safeDist;
                 const nx = dx / safeDist;
                 const ny = dy / safeDist;
                 const pushX = nx * overlap * 0.5;
@@ -2691,8 +2714,8 @@ export default function PowerGridBackground() {
                 other.vx += nx * overlap * 2.4;
                 other.vy += ny * overlap * 2.4;
 
-                constrainPointToMap(worker, WORKER_RADIUS);
-                constrainPointToMap(other, WORKER_RADIUS);
+                constrainPointToMap(worker, workerRadius);
+                constrainPointToMap(other, workerRadius);
               }
             }
           }
@@ -2804,7 +2827,7 @@ export default function PowerGridBackground() {
 
       const projectedWorkerX = worker.x + worker.vx * LOCAL_AVOIDANCE_LOOKAHEAD;
       const projectedWorkerY = worker.y + worker.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
-      const minGap = WORKER_MIN_SEPARATION + 2;
+      const minGap = getWorkerMinSeparation() + 2;
       const localAvoidanceRadiusSq = LOCAL_AVOIDANCE_RADIUS * LOCAL_AVOIDANCE_RADIUS;
       const obstaclePressure = sampleObstaclePressure(
         projectedWorkerX,
@@ -2922,13 +2945,13 @@ export default function PowerGridBackground() {
       return {
         x: clamp(
           target.x + Math.cos(angle) * radius,
-          WORKER_RADIUS + 6,
-          world.width - WORKER_RADIUS - 6,
+          getWorkerRadius() + 6,
+          world.width - getWorkerRadius() - 6,
         ),
         y: clamp(
           target.y + Math.sin(angle) * radius,
-          WORKER_RADIUS + 6,
-          world.height - WORKER_RADIUS - 6,
+          getWorkerRadius() + 6,
+          world.height - getWorkerRadius() - 6,
         ),
       };
     }
@@ -3247,7 +3270,7 @@ export default function PowerGridBackground() {
         worker.x = clamp(worker.x + worker.vx * dt, 10, world.width - 10);
         worker.y = clamp(worker.y + worker.vy * dt, 10, world.height - 10);
 
-        if (constrainPointToMap(worker, WORKER_RADIUS)) {
+        if (constrainPointToMap(worker, getWorkerRadius())) {
           worker.vx *= 0.72;
           worker.vy *= 0.72;
         }
@@ -3688,10 +3711,14 @@ export default function PowerGridBackground() {
         return;
       }
 
+      const workerSpriteSize = Math.round(WORKER_SPRITE_SIZE * getWorkerSpriteScale());
+      const workerSpriteHalf = workerSpriteSize * 0.5;
       ctx.drawImage(
         sprite,
-        Math.round(worker.x - WORKER_SPRITE_HALF),
-        Math.round(worker.y - WORKER_SPRITE_HALF),
+        Math.round(worker.x - workerSpriteHalf),
+        Math.round(worker.y - workerSpriteHalf),
+        workerSpriteSize,
+        workerSpriteSize,
       );
     }
 
