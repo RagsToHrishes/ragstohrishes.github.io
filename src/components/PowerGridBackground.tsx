@@ -331,8 +331,9 @@ function measureElementRects(selector: string): ObstacleRect[] {
 function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
   const viewportWidth = Math.max(width, 360);
   const viewportHeight = Math.max(height, 560);
-  const hallwayToChromeGap = 42;
-  const hallwayToPanelGap = 24;
+  const compactViewport = viewportWidth <= SMALL_SCREEN_BREAKPOINT;
+  const hallwayToChromeGap = compactViewport ? 58 : 42;
+  const hallwayToPanelGap = compactViewport ? 28 : 24;
 
   const headerRect = measureElementRect(document.querySelector('.site-nav'));
   const footerRect = measureElementRect(document.querySelector('.site-footer'));
@@ -392,18 +393,23 @@ function buildFixedMapLayout(width: number, height: number): FixedMapLayout {
     ...headerObstacles,
     ...footerObstacles,
   ];
+  const compactLaneInset = clamp(viewportWidth * 0.18, 56, 92);
 
   return {
     obstacles,
     panelRects,
     hallwayY,
-    leftLaneX: clamp(leftEdge * 0.5, 40, viewportWidth - 40),
+    leftLaneX: compactViewport
+      ? compactLaneInset
+      : clamp(leftEdge * 0.5, 40, viewportWidth - 40),
     centerLaneX: clamp(viewportWidth * 0.5, 56, viewportWidth - 56),
-    rightLaneX: clamp(
-      rightEdge + (viewportWidth - rightEdge) * 0.5,
-      40,
-      viewportWidth - 40,
-    ),
+    rightLaneX: compactViewport
+      ? viewportWidth - compactLaneInset
+      : clamp(
+        rightEdge + (viewportWidth - rightEdge) * 0.5,
+        40,
+        viewportWidth - 40,
+      ),
   };
 }
 
@@ -1947,8 +1953,9 @@ export default function PowerGridBackground() {
       const hallwayY = lanes.yPositions.length > 0
         ? lanes.yPositions
         : [clamp(height * 0.5, 96, height - 96)];
-      const topHallwayOffset = -18;
-      const bottomHallwayOffset = 30;
+      const compactViewport = width <= SMALL_SCREEN_BREAKPOINT;
+      const topHallwayOffset = compactViewport ? -10 : -18;
+      const bottomHallwayOffset = compactViewport ? 10 : 30;
 
       if (hallwayY.length >= 2) {
         const topHallway = hallwayY[0];
