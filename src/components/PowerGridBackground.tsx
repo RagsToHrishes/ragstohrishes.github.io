@@ -127,6 +127,12 @@ type GraphHistory = {
   factory: number[];
 };
 
+type TaskPriorityProfile = {
+  desiredWorkers: number;
+  status: string;
+  weights: Record<TaskType, number>;
+};
+
 type ObstacleRect = {
   left: number;
   top: number;
@@ -171,6 +177,20 @@ type StructureIndex = {
   byKind: StructureCollections;
 };
 
+type StructureStats = {
+  coalPatches: CoalPatch[];
+  generators: GeneratorNode[];
+  batteries: BatteryNode[];
+  labs: LabNode[];
+  factories: FactoryNode[];
+  totalFuel: number;
+  totalCells: number;
+  totalLabEnergy: number;
+  totalFactoryCharge: number;
+  totalFactoryProgress: number;
+  totalCellCapacity: number;
+};
+
 type ClaimCounts = {
   toGenerator: Map<number, number>;
   fromGenerator: Map<number, number>;
@@ -206,7 +226,7 @@ const COLORS = {
   softInk: 'rgba(66, 66, 66, 0.22)',
 };
 
-const WORKER_RADIUS = 5;
+const WORKER_RADIUS = 8;
 const WORKER_MIN_SEPARATION = WORKER_RADIUS * 2 + 4;
 const LOCAL_AVOIDANCE_RADIUS = 26;
 const LOCAL_AVOIDANCE_LOOKAHEAD = 0.16;
@@ -250,6 +270,12 @@ function clamp(value: number, min: number, max: number) {
 
 function distance(ax: number, ay: number, bx: number, by: number) {
   return Math.hypot(ax - bx, ay - by);
+}
+
+function distanceSquared(ax: number, ay: number, bx: number, by: number) {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
 }
 
 function hexToRgba(hex: string, alpha: number) {
@@ -456,6 +482,69 @@ function createStructureIndex(structures: Structure[]): StructureIndex {
   return { byId, byKind };
 }
 
+function countMalfunctioningWorkers(workers: Worker[]) {
+  let malfunctioning = 0;
+
+  for (let index = 0; index < workers.length; index += 1) {
+    if (workers[index].malfunctionTimer > 0) {
+      malfunctioning += 1;
+    }
+  }
+
+  return malfunctioning;
+}
+
+function getStructureStats(structureIndex: StructureIndex): StructureStats {
+  const coalPatches = structureIndex.byKind.coal;
+  const generators = structureIndex.byKind.generator;
+  const batteries = structureIndex.byKind.battery;
+  const labs = structureIndex.byKind.lab;
+  const factories = structureIndex.byKind.factory;
+
+  let totalFuel = 0;
+  let totalCells = 0;
+  let totalLabEnergy = 0;
+  let totalFactoryCharge = 0;
+  let totalFactoryProgress = 0;
+  let totalCellCapacity = generators.length * MAX_GENERATOR_OUTPUT;
+
+  for (let index = 0; index < generators.length; index += 1) {
+    const node = generators[index];
+    totalFuel += node.fuel;
+    totalCells += node.outputCells;
+  }
+
+  for (let index = 0; index < batteries.length; index += 1) {
+    const node = batteries[index];
+    totalCells += node.charge;
+    totalCellCapacity += node.capacity;
+  }
+
+  for (let index = 0; index < labs.length; index += 1) {
+    totalLabEnergy += labs[index].energy;
+  }
+
+  for (let index = 0; index < factories.length; index += 1) {
+    const node = factories[index];
+    totalFactoryCharge += node.charge;
+    totalFactoryProgress += node.buildProgress;
+  }
+
+  return {
+    coalPatches,
+    generators,
+    batteries,
+    labs,
+    factories,
+    totalFuel,
+    totalCells,
+    totalLabEnergy,
+    totalFactoryCharge,
+    totalFactoryProgress,
+    totalCellCapacity,
+  };
+}
+
 function createClaimCounts(): ClaimCounts {
   return {
     toGenerator: new Map<number, number>(),
@@ -573,24 +662,27 @@ function MiniGraph({ label, value, detail, values, color }: MiniGraphProps) {
   );
 }
 
-function deriveMetrics(world: World, statusOverride?: string): Metrics {
-  const coalPatches = world.structures.filter((node) => node.kind === 'coal').length;
-  const generators = world.structures.filter((node) => node.kind === 'generator') as GeneratorNode[];
-  const batteries = world.structures.filter((node) => node.kind === 'battery') as BatteryNode[];
-  const labs = world.structures.filter((node) => node.kind === 'lab') as LabNode[];
-  const factories = world.structures.filter((node) => node.kind === 'factory') as FactoryNode[];
-  const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
-  const totalCells =
-    generators.reduce((sum, node) => sum + node.outputCells, 0) +
-    batteries.reduce((sum, node) => sum + node.charge, 0);
-  const totalLabEnergy = labs.reduce((sum, node) => sum + node.energy, 0);
-  const totalFactoryCharge = factories.reduce((sum, node) => sum + node.charge, 0);
-  const totalFactoryProgress = factories.reduce((sum, node) => sum + node.buildProgress, 0);
-  const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
-  const cellCapacity =
-    generators.length * MAX_GENERATOR_OUTPUT +
-    batteries.reduce((sum, node) => sum + node.capacity, 0);
-  const cellsPct = cellCapacity > 0 ? (totalCells / cellCapacity) * 100 : 0;
+function deriveMetrics(
+  world: World,
+  statusOverride?: string,
+  structureIndex?: StructureIndex,
+): Metrics {
+  const stats = getStructureStats(structureIndex ?? createStructureIndex(world.structures));
+  const {
+    coalPatches,
+    generators,
+    batteries,
+    labs,
+    factories,
+    totalFuel,
+    totalCells,
+    totalLabEnergy,
+    totalFactoryCharge,
+    totalFactoryProgress,
+    totalCellCapacity,
+  } = stats;
+  const malfunctioning = countMalfunctioningWorkers(world.workers);
+  const cellsPct = totalCellCapacity > 0 ? (totalCells / totalCellCapacity) * 100 : 0;
   const fuelPct = generators.length > 0 ? (totalFuel / (generators.length * 100)) * 100 : 0;
   const labPct = labs.length > 0 ? (totalLabEnergy / (labs.length * 100)) * 100 : 0;
   const powerPct = fuelPct * 0.35 + cellsPct * 0.4 + labPct * 0.25;
@@ -599,7 +691,7 @@ function deriveMetrics(world: World, statusOverride?: string): Metrics {
   const factoryPct = averageFactoryCharge * 0.55 + averageFactoryProgress * 0.45;
 
   let status = 'Booting grid';
-  if (coalPatches && generators.length && batteries.length && labs.length && factories.length) {
+  if (coalPatches.length && generators.length && batteries.length && labs.length && factories.length) {
     status = 'Grid nominal';
     if (totalFuel < generators.length * 28) {
       status = 'Fuel low';
@@ -612,11 +704,11 @@ function deriveMetrics(world: World, statusOverride?: string): Metrics {
     } else if (totalLabEnergy < labs.length * 35) {
       status = 'Labs are draining';
     }
-  } else if (coalPatches && generators.length && batteries.length) {
+  } else if (coalPatches.length && generators.length && batteries.length) {
     status = 'Bring factory online';
-  } else if (coalPatches && generators.length) {
+  } else if (coalPatches.length && generators.length) {
     status = 'Add storage';
-  } else if (coalPatches) {
+  } else if (coalPatches.length) {
     status = 'Waiting on generators';
   }
 
@@ -705,7 +797,7 @@ export default function PowerGridBackground() {
       return;
     }
 
-    const ctx = canvas.getContext('2d', { alpha: true })!;
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
     if (!ctx) {
       return;
     }
@@ -716,9 +808,13 @@ export default function PowerGridBackground() {
     let statsTimer = 0;
     let simulationTime = 0;
     let activeWorkerTrafficField: Float32Array | null = null;
+    let workerTrafficFieldBuffer: Float32Array | null = null;
     let backgroundSceneCanvas: HTMLCanvasElement | null = null;
     let gridCacheCanvas: HTMLCanvasElement | null = null;
     let networkHintsCanvas: HTMLCanvasElement | null = null;
+    let mapClipPath: Path2D | null = null;
+    const reusableClaims = createClaimCounts();
+    const reusableStructureCrowding = new Map<number, number>();
     const navigatorWithHints = navigator as Navigator & {
       connection?: { saveData?: boolean };
       deviceMemory?: number;
@@ -738,8 +834,20 @@ export default function PowerGridBackground() {
       maxFlockingNeighbors: lowPowerDevice ? 18 : 32,
       maxDpr: lowPowerDevice ? 1 : compactViewport ? 1.25 : 1.75,
     };
-
-    const dpr = Math.max(1, Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1));
+    const viewportPixels = Math.max(1, window.innerWidth * window.innerHeight);
+    const largeViewport = viewportPixels >= 3_000_000;
+    const surfacePixelBudget = lowPowerDevice
+      ? 2_600_000
+      : largeViewport
+        ? 8_500_000
+        : Number.POSITIVE_INFINITY;
+    const budgetedDpr = Number.isFinite(surfacePixelBudget)
+      ? Math.sqrt(surfacePixelBudget / viewportPixels)
+      : performanceProfile.maxDpr;
+    const dpr = Math.max(
+      1,
+      Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1, budgetedDpr),
+    );
 
     function getLoadCycleValue() {
       const primary = Math.sin(simulationTime * 0.18) * 0.18;
@@ -757,32 +865,25 @@ export default function PowerGridBackground() {
 
     function getStrategicDesiredWorkerCount(
       world: World,
-      generators: GeneratorNode[],
-      batteries: BatteryNode[],
-      labs: LabNode[],
-      factories: FactoryNode[],
+      structureStats: StructureStats,
+      malfunctioning: number,
     ) {
       const baseTarget = getDesiredWorkerCount();
       const averageFuel =
-        generators.length > 0
-          ? generators.reduce((sum, node) => sum + node.fuel, 0) / generators.length
+        structureStats.generators.length > 0
+          ? structureStats.totalFuel / structureStats.generators.length
           : 0;
       const averageLabEnergy =
-        labs.length > 0
-          ? labs.reduce((sum, node) => sum + node.energy, 0) / labs.length
+        structureStats.labs.length > 0
+          ? structureStats.totalLabEnergy / structureStats.labs.length
           : 0;
       const averageFactoryCharge =
-        factories.length > 0
-          ? factories.reduce((sum, node) => sum + node.charge, 0) / factories.length
+        structureStats.factories.length > 0
+          ? structureStats.totalFactoryCharge / structureStats.factories.length
           : 0;
-      const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
-      const totalCellCapacity =
-        generators.length * MAX_GENERATOR_OUTPUT +
-        batteries.reduce((sum, node) => sum + node.capacity, 0);
-      const storedCells =
-        generators.reduce((sum, node) => sum + node.outputCells, 0) +
-        batteries.reduce((sum, node) => sum + node.charge, 0);
-      const cellsPct = totalCellCapacity > 0 ? (storedCells / totalCellCapacity) * 100 : 0;
+      const cellsPct = structureStats.totalCellCapacity > 0
+        ? (structureStats.totalCells / structureStats.totalCellCapacity) * 100
+        : 0;
 
       let target = baseTarget;
       target += Math.round(clamp((52 - averageFuel) / 52, 0, 1) * 12);
@@ -864,12 +965,20 @@ export default function PowerGridBackground() {
       });
 
       const world = worldRef.current;
-      const coalPatches = getNodes('coal') as CoalPatch[];
-      const generators = getNodes('generator') as GeneratorNode[];
-      const batteries = getNodes('battery') as BatteryNode[];
-      const labs = getNodes('lab') as LabNode[];
-      const factories = getNodes('factory') as FactoryNode[];
-      const metricsSnapshot = deriveMetrics(world);
+      const structureStats = getStructureStats(structureIndexRef.current);
+      const {
+        coalPatches,
+        generators,
+        batteries,
+        labs,
+        factories,
+        totalFuel,
+        totalCells,
+        totalLabEnergy,
+        totalFactoryCharge,
+        totalCellCapacity,
+      } = structureStats;
+      const malfunctioning = countMalfunctioningWorkers(world.workers);
       const systemReady =
         coalPatches.length > 0 &&
         generators.length > 0 &&
@@ -880,37 +989,17 @@ export default function PowerGridBackground() {
       if (!systemReady) {
         currentStrategy = {
           ...currentStrategy,
-          label: metricsSnapshot.status,
+          label: deriveMetrics(world, undefined, structureIndexRef.current).status,
           desiredWorkers: getDesiredWorkerCount(),
         };
         return;
       }
 
-      const baseDesiredWorkers = getStrategicDesiredWorkerCount(
-        world,
-        generators,
-        batteries,
-        labs,
-        factories,
-      );
-      const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
+      const baseDesiredWorkers = getStrategicDesiredWorkerCount(world, structureStats, malfunctioning);
       const averageFuel = generators.length > 0 ? totalFuel / generators.length : 0;
-      const totalCellCapacity =
-        generators.length * MAX_GENERATOR_OUTPUT +
-        batteries.reduce((sum, node) => sum + node.capacity, 0);
-      const storedCells =
-        generators.reduce((sum, node) => sum + node.outputCells, 0) +
-        batteries.reduce((sum, node) => sum + node.charge, 0);
-      const cellsPct = totalCellCapacity > 0 ? (storedCells / totalCellCapacity) * 100 : 0;
-      const averageLabEnergy =
-        labs.length > 0
-          ? labs.reduce((sum, node) => sum + node.energy, 0) / labs.length
-          : 0;
-      const averageFactoryCharge =
-        factories.length > 0
-          ? factories.reduce((sum, node) => sum + node.charge, 0) / factories.length
-          : 0;
-      const malfunctioning = world.workers.filter((worker) => worker.malfunctionTimer > 0).length;
+      const cellsPct = totalCellCapacity > 0 ? (totalCells / totalCellCapacity) * 100 : 0;
+      const averageLabEnergy = labs.length > 0 ? totalLabEnergy / labs.length : 0;
+      const averageFactoryCharge = factories.length > 0 ? totalFactoryCharge / factories.length : 0;
       const crewNeed = clamp(
         (baseDesiredWorkers - world.workers.length) / Math.max(1, baseDesiredWorkers),
         0,
@@ -1007,8 +1096,17 @@ export default function PowerGridBackground() {
       });
     }
 
+    function clearClaimCounts(claims: ClaimCounts) {
+      claims.toGenerator.clear();
+      claims.fromGenerator.clear();
+      claims.toBattery.clear();
+      claims.fromBattery.clear();
+      claims.toLab.clear();
+      claims.toFactory.clear();
+    }
+
     function publishMetrics(world: World) {
-      const nextMetrics = deriveMetrics(world, currentStrategy.label);
+      const nextMetrics = deriveMetrics(world, currentStrategy.label, structureIndexRef.current);
       setMetrics(nextMetrics);
       setGraphHistory((previous) => ({
         power: pushHistoryValue(previous.power, nextMetrics.powerPct),
@@ -1154,6 +1252,7 @@ export default function PowerGridBackground() {
         );
         pathCacheRef.current.clear();
         backgroundSceneCanvas = null;
+        mapClipPath = null;
       }
 
       return layout;
@@ -1401,7 +1500,7 @@ export default function PowerGridBackground() {
     function advanceWorkerRoute(worker: Worker, targetX: number, targetY: number) {
       while (worker.routeIndex < worker.route.length - 1) {
         const waypoint = worker.route[worker.routeIndex];
-        if (!waypoint || distance(worker.x, worker.y, waypoint.x, waypoint.y) > 18) {
+        if (!waypoint || distanceSquared(worker.x, worker.y, waypoint.x, waypoint.y) > 18 * 18) {
           break;
         }
 
@@ -1419,9 +1518,10 @@ export default function PowerGridBackground() {
       }
 
       const minimumTravel = Math.min(worldRef.current.width, worldRef.current.height) * 0.16;
+      const minimumTravelSq = minimumTravel * minimumTravel;
       const candidates = structures.filter((node) => (
         node.id !== worker.idleTargetId &&
-        distance(worker.x, worker.y, node.x, node.y) >= minimumTravel
+        distanceSquared(worker.x, worker.y, node.x, node.y) >= minimumTravelSq
       ));
       const pool = candidates.length > 0
         ? candidates
@@ -1443,9 +1543,11 @@ export default function PowerGridBackground() {
       padding: number,
     ) {
       let moved = false;
+      const obstacles = obstacleRectsRef.current;
 
       for (let pass = 0; pass < 2; pass += 1) {
-        obstacleRectsRef.current.forEach((rect) => {
+        for (let index = 0; index < obstacles.length; index += 1) {
+          const rect = obstacles[index];
           const left = rect.left - padding;
           const right = rect.right + padding;
           const top = rect.top - padding;
@@ -1457,20 +1559,42 @@ export default function PowerGridBackground() {
             point.y <= top ||
             point.y >= bottom
           ) {
-            return;
+            continue;
           }
 
-          const adjustments = [
-            { distance: Math.abs(point.x - left), apply: () => { point.x = left; } },
-            { distance: Math.abs(right - point.x), apply: () => { point.x = right; } },
-            { distance: Math.abs(point.y - top), apply: () => { point.y = top; } },
-            { distance: Math.abs(bottom - point.y), apply: () => { point.y = bottom; } },
-          ];
+          const leftDistance = Math.abs(point.x - left);
+          const rightDistance = Math.abs(right - point.x);
+          const topDistance = Math.abs(point.y - top);
+          const bottomDistance = Math.abs(bottom - point.y);
 
-          adjustments.sort((first, second) => first.distance - second.distance);
-          adjustments[0]?.apply();
+          let bestEdge: 'left' | 'right' | 'top' | 'bottom' = 'left';
+          let bestDistance = leftDistance;
+
+          if (rightDistance < bestDistance) {
+            bestDistance = rightDistance;
+            bestEdge = 'right';
+          }
+
+          if (topDistance < bestDistance) {
+            bestDistance = topDistance;
+            bestEdge = 'top';
+          }
+
+          if (bottomDistance < bestDistance) {
+            bestEdge = 'bottom';
+          }
+
+          if (bestEdge === 'left') {
+            point.x = left;
+          } else if (bestEdge === 'right') {
+            point.x = right;
+          } else if (bestEdge === 'top') {
+            point.y = top;
+          } else {
+            point.y = bottom;
+          }
           moved = true;
-        });
+        }
       }
 
       return moved;
@@ -1505,6 +1629,7 @@ export default function PowerGridBackground() {
       }
 
       backgroundSceneCanvas = null;
+      networkHintsCanvas = null;
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
@@ -1521,7 +1646,10 @@ export default function PowerGridBackground() {
     }
 
     function applyObstacleAvoidance(worker: Worker, dt: number) {
-      obstacleRectsRef.current.forEach((rect) => {
+      const obstacles = obstacleRectsRef.current;
+
+      for (let index = 0; index < obstacles.length; index += 1) {
+        const rect = obstacles[index];
         const left = rect.left - WORKER_RADIUS;
         const right = rect.right + WORKER_RADIUS;
         const top = rect.top - WORKER_RADIUS;
@@ -1540,21 +1668,33 @@ export default function PowerGridBackground() {
         const force = (OBSTACLE_REPULSION_RANGE - safeDist) / OBSTACLE_REPULSION_RANGE;
         worker.vx += (dx / safeDist) * force * 220 * dt;
         worker.vy += (dy / safeDist) * force * 220 * dt;
-      });
+      }
     }
 
     function clipToMap() {
       clipContextToMap(ctx);
     }
 
-    function clipContextToMap(targetCtx: CanvasRenderingContext2D) {
+    function buildMapClipPath() {
       const world = worldRef.current;
-      targetCtx.beginPath();
-      targetCtx.rect(0, 0, world.width, world.height);
-      obstacleRectsRef.current.forEach((rect) => {
-        targetCtx.rect(rect.left, rect.top, rect.width, rect.height);
-      });
-      targetCtx.clip('evenodd');
+      const clipPath = new Path2D();
+      clipPath.rect(0, 0, world.width, world.height);
+      const obstacles = obstacleRectsRef.current;
+
+      for (let index = 0; index < obstacles.length; index += 1) {
+        const rect = obstacles[index];
+        clipPath.rect(rect.left, rect.top, rect.width, rect.height);
+      }
+
+      return clipPath;
+    }
+
+    function clipContextToMap(targetCtx: CanvasRenderingContext2D) {
+      if (!mapClipPath) {
+        mapClipPath = buildMapClipPath();
+      }
+
+      targetCtx.clip(mapClipPath, 'evenodd');
     }
 
     function nextId() {
@@ -1827,6 +1967,7 @@ export default function PowerGridBackground() {
       backgroundSceneCanvas = null;
       gridCacheCanvas = null;
       networkHintsCanvas = null;
+      mapClipPath = null;
 
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
@@ -1884,6 +2025,7 @@ export default function PowerGridBackground() {
       backgroundSceneCanvas = null;
       gridCacheCanvas = null;
       networkHintsCanvas = null;
+      mapClipPath = null;
       refreshMapLayout(nextWidth, nextHeight);
 
       if (world.structures.length === 0) {
@@ -1927,7 +2069,8 @@ export default function PowerGridBackground() {
     }
 
     function getClaimCounts() {
-      const claims = createClaimCounts();
+      const claims = reusableClaims;
+      clearClaimCounts(claims);
 
       worldRef.current.workers.forEach((worker) => {
         if (!worker.task) {
@@ -1942,22 +2085,20 @@ export default function PowerGridBackground() {
 
     function getTaskPriorityProfile(
       world: World,
-      generators: GeneratorNode[],
-      batteries: BatteryNode[],
-      labs: LabNode[],
-      factories: FactoryNode[],
+      structureStats: StructureStats,
       desiredWorkers: number,
-    ) {
-      const totalFuel = generators.reduce((sum, node) => sum + node.fuel, 0);
-      const totalCells =
-        generators.reduce((sum, node) => sum + node.outputCells, 0) +
-        batteries.reduce((sum, node) => sum + node.charge, 0);
-      const totalLabEnergy = labs.reduce((sum, node) => sum + node.energy, 0);
-      const totalFactoryCharge = factories.reduce((sum, node) => sum + node.charge, 0);
+    ): TaskPriorityProfile {
+      const {
+        generators,
+        labs,
+        factories,
+        totalFuel,
+        totalCells,
+        totalLabEnergy,
+        totalFactoryCharge,
+        totalCellCapacity,
+      } = structureStats;
       const averageFuel = generators.length > 0 ? totalFuel / generators.length : 0;
-      const totalCellCapacity =
-        generators.length * MAX_GENERATOR_OUTPUT +
-        batteries.reduce((sum, node) => sum + node.capacity, 0);
       const cellsPct = totalCellCapacity > 0 ? (totalCells / totalCellCapacity) * 100 : 0;
       const averageLabEnergy = labs.length > 0 ? totalLabEnergy / labs.length : 0;
       const averageFactoryCharge = factories.length > 0 ? totalFactoryCharge / factories.length : 0;
@@ -2014,21 +2155,23 @@ export default function PowerGridBackground() {
     }
 
     function buildStructureCrowdingMap(workers: Worker[], structures: Structure[]) {
-      const crowding = new Map<number, number>();
+      const crowding = reusableStructureCrowding;
+      crowding.clear();
       for (let workerIndex = 0; workerIndex < workers.length; workerIndex += 1) {
         const worker = workers[workerIndex];
         let nearestId = -1;
-        let nearestDistance = Number.POSITIVE_INFINITY;
+        let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
         for (let structureIndex = 0; structureIndex < structures.length; structureIndex += 1) {
           const node = structures[structureIndex];
-          const nodeDistance = distance(worker.x, worker.y, node.x, node.y);
-          if (nodeDistance > node.size + 68 || nodeDistance >= nearestDistance) {
+          const threshold = node.size + 68;
+          const nodeDistanceSq = distanceSquared(worker.x, worker.y, node.x, node.y);
+          if (nodeDistanceSq > threshold * threshold || nodeDistanceSq >= nearestDistanceSq) {
             continue;
           }
 
           nearestId = node.id;
-          nearestDistance = nodeDistance;
+          nearestDistanceSq = nodeDistanceSq;
         }
 
         if (nearestId !== -1) {
@@ -2057,22 +2200,16 @@ export default function PowerGridBackground() {
       worker: Worker,
       claims: ClaimCounts,
       structureCrowding: Map<number, number>,
+      coalPatches: CoalPatch[],
+      generators: GeneratorNode[],
+      batteries: BatteryNode[],
+      labs: LabNode[],
+      factories: FactoryNode[],
+      priority: TaskPriorityProfile,
     ) {
       const world = worldRef.current;
-      const coalPatches = getNodes('coal') as CoalPatch[];
-      const generators = getNodes('generator') as GeneratorNode[];
-      const batteries = getNodes('battery') as BatteryNode[];
-      const labs = getNodes('lab') as LabNode[];
-      const factories = getNodes('factory') as FactoryNode[];
-      const desiredWorkers = currentStrategy.desiredWorkers;
-      const priority = getTaskPriorityProfile(
-        world,
-        generators,
-        batteries,
-        labs,
-        factories,
-        desiredWorkers,
-      );
+      const workerX = worker.x;
+      const workerY = worker.y;
 
       let chosen: { score: number; task: Task } | null = null;
 
@@ -2083,19 +2220,20 @@ export default function PowerGridBackground() {
           return;
         }
 
-        const source = coalPatches.reduce((best, node) => {
-          if (!best) {
-            return node;
+        let source = coalPatches[0];
+        let bestSourceDistanceSq = Number.POSITIVE_INFINITY;
+        for (let coalIndex = 0; coalIndex < coalPatches.length; coalIndex += 1) {
+          const node = coalPatches[coalIndex];
+          const nodeDistanceSq = distanceSquared(workerX, workerY, node.x, node.y);
+          if (nodeDistanceSq < bestSourceDistanceSq) {
+            bestSourceDistanceSq = nodeDistanceSq;
+            source = node;
           }
-          return distance(worker.x, worker.y, node.x, node.y) <
-            distance(worker.x, worker.y, best.x, best.y)
-            ? node
-            : best;
-        }, coalPatches[0]);
+        }
 
         const urgency = (100 - generator.fuel) / 100;
         const travelPenalty =
-          distance(worker.x, worker.y, source.x, source.y) * 0.35 +
+          distance(workerX, workerY, source.x, source.y) * 0.35 +
           distance(source.x, source.y, generator.x, generator.y) * 0.45;
         const sourceCrowdingPenalty =
           getStructureCrowdingPenalty(source.id, structureCrowding) * 0.42;
@@ -2134,7 +2272,7 @@ export default function PowerGridBackground() {
 
           const urgency = (battery.capacity - battery.charge) / battery.capacity;
           const travelPenalty =
-            distance(worker.x, worker.y, generator.x, generator.y) * 0.35 +
+            distance(workerX, workerY, generator.x, generator.y) * 0.35 +
             distance(generator.x, generator.y, battery.x, battery.y) * 0.45;
           const sourceCrowdingPenalty =
             getStructureCrowdingPenalty(generator.id, structureCrowding, claims.fromGenerator.get(generator.id) || 0) * 0.5;
@@ -2174,7 +2312,7 @@ export default function PowerGridBackground() {
 
           const urgency = (100 - lab.energy) / 100;
           const travelPenalty =
-            distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
+            distance(workerX, workerY, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, lab.x, lab.y) * 0.45;
           const sourceCrowdingPenalty =
             getStructureCrowdingPenalty(battery.id, structureCrowding, claims.fromBattery.get(battery.id) || 0) * 0.52;
@@ -2224,7 +2362,7 @@ export default function PowerGridBackground() {
           );
           const urgency = workerDemand * 0.75 + ((100 - factory.charge) / 100) * 0.25;
           const travelPenalty =
-            distance(worker.x, worker.y, battery.x, battery.y) * 0.35 +
+            distance(workerX, workerY, battery.x, battery.y) * 0.35 +
             distance(battery.x, battery.y, factory.x, factory.y) * 0.45;
           const sourceCrowdingPenalty =
             getStructureCrowdingPenalty(battery.id, structureCrowding, claims.fromBattery.get(battery.id) || 0) * 0.5;
@@ -2337,7 +2475,13 @@ export default function PowerGridBackground() {
         return null;
       }
 
-      const field = new Float32Array(grid.cols * grid.rows);
+      const totalCells = grid.cols * grid.rows;
+      if (!workerTrafficFieldBuffer || workerTrafficFieldBuffer.length !== totalCells) {
+        workerTrafficFieldBuffer = new Float32Array(totalCells);
+      } else {
+        workerTrafficFieldBuffer.fill(0);
+      }
+      const field = workerTrafficFieldBuffer;
 
       for (let index = 0; index < workers.length; index += 1) {
         const worker = workers[index];
@@ -2634,8 +2778,11 @@ export default function PowerGridBackground() {
       const nextWaypoint = advanceWorkerRoute(worker, approachPoint.x, approachPoint.y);
       steerTo(worker, nextWaypoint.x, nextWaypoint.y, speed, dt);
 
-      const nearTarget = distance(worker.x, worker.y, target.x, target.y) <= target.size + 12;
-      const nearApproach = distance(worker.x, worker.y, approachPoint.x, approachPoint.y) <= 14;
+      const targetReach = target.size + 12;
+      const nearTarget =
+        distanceSquared(worker.x, worker.y, target.x, target.y) <= targetReach * targetReach;
+      const nearApproach =
+        distanceSquared(worker.x, worker.y, approachPoint.x, approachPoint.y) <= 14 * 14;
       if (!nearTarget && !nearApproach) {
         return;
       }
@@ -2713,6 +2860,7 @@ export default function PowerGridBackground() {
     }
 
     function updateStructures(dt: number) {
+      const world = worldRef.current;
       const generators = getNodes('generator') as GeneratorNode[];
       const labs = getNodes('lab') as LabNode[];
       const factories = getNodes('factory') as FactoryNode[];
@@ -2744,7 +2892,7 @@ export default function PowerGridBackground() {
 
       factories.forEach((node) => {
         node.pulse = Math.max(0, node.pulse - dt * 1.3);
-        if (worldRef.current.workers.length >= desiredWorkers + 4) {
+        if (world.workers.length >= desiredWorkers + 4) {
           node.buildProgress = Math.max(0, node.buildProgress - dt * 2.2);
           return;
         }
@@ -2754,35 +2902,47 @@ export default function PowerGridBackground() {
           return;
         }
 
-        const buildDemand = clamp((desiredWorkers - worldRef.current.workers.length) / desiredWorkers, 0.08, 1);
+        const buildDemand = clamp((desiredWorkers - world.workers.length) / desiredWorkers, 0.08, 1);
         node.charge = clamp(node.charge - dt * FACTORY_POWER_DRAIN * buildDemand, 0, 100);
         node.buildProgress = clamp(node.buildProgress + dt * FACTORY_BUILD_RATE * buildDemand, 0, 100);
         node.pulse = Math.max(node.pulse, 0.2);
 
-        if (node.buildProgress >= 100 && worldRef.current.workers.length < WORKER_CAP) {
+        if (node.buildProgress >= 100 && world.workers.length < WORKER_CAP) {
           node.buildProgress = Math.max(0, node.buildProgress - 100);
           spawnWorkerNearFactory(node);
           node.pulse = 1;
         }
       });
 
-      worldRef.current.ripples = worldRef.current.ripples.filter((ripple) => ripple.life > 0.02);
-      worldRef.current.ripples.forEach((ripple) => {
+      let rippleWriteIndex = 0;
+      for (let index = 0; index < world.ripples.length; index += 1) {
+        const ripple = world.ripples[index];
         ripple.life -= dt * 1.5;
-      });
+        if (ripple.life <= 0.02) {
+          continue;
+        }
 
-      worldRef.current.particles = worldRef.current.particles.filter((particle) => particle.life > 0.02);
-      worldRef.current.particles.forEach((particle) => {
+        world.ripples[rippleWriteIndex] = ripple;
+        rippleWriteIndex += 1;
+      }
+      world.ripples.length = rippleWriteIndex;
+
+      let particleWriteIndex = 0;
+      for (let index = 0; index < world.particles.length; index += 1) {
+        const particle = world.particles[index];
         particle.life -= dt * 2.2;
+        if (particle.life <= 0.02) {
+          continue;
+        }
+
         particle.x += particle.vx * dt;
         particle.y += particle.vy * dt;
         particle.vx *= 0.96;
         particle.vy *= 0.96;
-      });
-
-      worldRef.current.structures.forEach((node) => {
-        constrainPointToMap(node, STRUCTURE_PADDING);
-      });
+        world.particles[particleWriteIndex] = particle;
+        particleWriteIndex += 1;
+      }
+      world.particles.length = particleWriteIndex;
     }
 
     function updateWorkers(dt: number) {
@@ -2790,6 +2950,9 @@ export default function PowerGridBackground() {
       const deadWorkerIds = new Set<number>();
       const desiredWorkers = currentStrategy.desiredWorkers;
       const loadFactor = getLoadCycleValue();
+      const structureStats = getStructureStats(structureIndexRef.current);
+      const { coalPatches, generators, batteries, labs, factories } = structureStats;
+      const taskPriority = getTaskPriorityProfile(world, structureStats, desiredWorkers);
       activeWorkerTrafficField = buildWorkerTrafficField(world.workers);
       const claims = getClaimCounts();
       const structureCrowding = buildStructureCrowdingMap(world.workers, world.structures);
@@ -2835,7 +2998,17 @@ export default function PowerGridBackground() {
         }
 
         if (!worker.task && worker.malfunctionTimer <= 0) {
-          assignTask(worker, claims, structureCrowding);
+          assignTask(
+            worker,
+            claims,
+            structureCrowding,
+            coalPatches,
+            generators,
+            batteries,
+            labs,
+            factories,
+            taskPriority,
+          );
         }
 
         applyFlocking(worker, dt, workerSpatialGrid, workerIndex);
@@ -2864,7 +3037,8 @@ export default function PowerGridBackground() {
           if (
             !idleTarget ||
             worker.idleTargetTimer <= 0 ||
-            distance(worker.x, worker.y, idleTarget.x, idleTarget.y) < idleTarget.size + 18
+            distanceSquared(worker.x, worker.y, idleTarget.x, idleTarget.y) <
+              (idleTarget.size + 18) * (idleTarget.size + 18)
           ) {
             idleTarget = chooseIdleTarget(worker);
           }
@@ -2876,7 +3050,7 @@ export default function PowerGridBackground() {
             const targetX = idleTarget.x + Math.cos(offsetAngle) * 22;
             const targetY = idleTarget.y + Math.sin(offsetAngle) * 18;
             const steerPoint =
-              distance(nextWaypoint.x, nextWaypoint.y, idleTarget.x, idleTarget.y) < 12
+              distanceSquared(nextWaypoint.x, nextWaypoint.y, idleTarget.x, idleTarget.y) < 12 * 12
                 ? { x: targetX, y: targetY }
                 : nextWaypoint;
             steerTo(worker, steerPoint.x, steerPoint.y, 91, dt);
@@ -2979,6 +3153,8 @@ export default function PowerGridBackground() {
         const backgroundCtx = backgroundSceneCanvas.getContext('2d');
         if (!backgroundCtx) {
           backgroundSceneCanvas = null;
+          ctx.fillStyle = COLORS.paper;
+          ctx.fillRect(0, 0, world.width, world.height);
           return;
         }
 
@@ -3112,8 +3288,6 @@ export default function PowerGridBackground() {
 
     function drawLabel(text: string, x: number, y: number) {
       ctx.fillStyle = COLORS.ink;
-      ctx.font = "11px 'SFMono-Regular', 'JetBrains Mono', monospace";
-      ctx.textAlign = 'center';
       ctx.fillText(text, Math.round(x), Math.round(y));
     }
 
@@ -3244,14 +3418,6 @@ export default function PowerGridBackground() {
       ctx.rotate(worker.angle);
 
       const isMalfunctioning = worker.malfunctionTimer > 0;
-      ctx.strokeStyle = isMalfunctioning ? COLORS.danger : COLORS.green;
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(0, -1);
-      ctx.lineTo(5, -5);
-      ctx.moveTo(0, 1);
-      ctx.lineTo(5, 5);
-      ctx.stroke();
 
       ctx.fillStyle = isMalfunctioning ? COLORS.dangerDark : COLORS.ink;
       ctx.beginPath();
@@ -3292,8 +3458,9 @@ export default function PowerGridBackground() {
     }
 
     function drawParticles() {
-      worldRef.current.particles.forEach((particle) => {
-        ctx.save();
+      const particles = worldRef.current.particles;
+      for (let index = 0; index < particles.length; index += 1) {
+        const particle = particles[index];
         ctx.globalAlpha = Math.max(0, particle.life);
         ctx.fillStyle = particle.color;
         ctx.fillRect(
@@ -3302,24 +3469,25 @@ export default function PowerGridBackground() {
           particle.size,
           particle.size,
         );
-        ctx.restore();
-      });
+      }
+      ctx.globalAlpha = 1;
     }
 
     function drawRipples() {
-      worldRef.current.ripples.forEach((ripple) => {
+      const ripples = worldRef.current.ripples;
+      ctx.lineWidth = 1.5;
+      for (let index = 0; index < ripples.length; index += 1) {
+        const ripple = ripples[index];
         const size = (1 - ripple.life) * 26;
         ctx.strokeStyle = ripple.color.startsWith('#')
           ? hexToRgba(ripple.color, Math.max(0.12, ripple.life))
           : ripple.color;
-        ctx.lineWidth = 1.5;
         ctx.strokeRect(ripple.x - size * 0.5, ripple.y - size * 0.5, size, size);
-      });
+      }
     }
 
     function drawScene() {
       const world = worldRef.current;
-      ctx.clearRect(0, 0, world.width, world.height);
       drawBackgroundScene();
 
       ctx.save();
@@ -3327,8 +3495,14 @@ export default function PowerGridBackground() {
       if (!performanceProfile.simplifiedVisuals) {
         drawNetworkHints();
       }
-      world.structures.forEach(drawNode);
-      world.workers.forEach(drawWorker);
+      ctx.font = "11px 'SFMono-Regular', 'JetBrains Mono', monospace";
+      ctx.textAlign = 'center';
+      for (let index = 0; index < world.structures.length; index += 1) {
+        drawNode(world.structures[index]);
+      }
+      for (let index = 0; index < world.workers.length; index += 1) {
+        drawWorker(world.workers[index]);
+      }
       drawParticles();
       drawRipples();
       ctx.restore();
