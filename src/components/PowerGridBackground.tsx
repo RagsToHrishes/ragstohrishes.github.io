@@ -192,6 +192,7 @@ type StructureStats = {
 };
 
 type ClaimCounts = {
+  fromCoal: Map<number, number>;
   toGenerator: Map<number, number>;
   fromGenerator: Map<number, number>;
   toBattery: Map<number, number>;
@@ -552,6 +553,7 @@ function getStructureStats(structureIndex: StructureIndex): StructureStats {
 
 function createClaimCounts(): ClaimCounts {
   return {
+    fromCoal: new Map<number, number>(),
     toGenerator: new Map<number, number>(),
     fromGenerator: new Map<number, number>(),
     toBattery: new Map<number, number>(),
@@ -574,6 +576,7 @@ function adjustClaimCount(counter: Map<number, number>, id: number, delta: numbe
 function applyTaskClaimDelta(claims: ClaimCounts, task: Task, delta: number) {
   switch (task.type) {
     case 'fuel-generator':
+      adjustClaimCount(claims.fromCoal, task.sourceId, delta);
       adjustClaimCount(claims.toGenerator, task.targetId, delta);
       break;
     case 'charge-battery':
@@ -1070,9 +1073,9 @@ export default function PowerGridBackground() {
       );
 
       const rawScores: Record<SwarmFocusKey, number> = {
-        fuel: fuelNeed * 1.55 + crewNeed * 0.22 + factoryNeed * 0.12 + getSwarmFocusOscillation('fuel'),
+        fuel: fuelNeed * 1.28 + crewNeed * 0.18 + factoryNeed * 0.08 + getSwarmFocusOscillation('fuel'),
         cells: cellNeed * 1.4 + labNeed * 0.12 + getSwarmFocusOscillation('cells'),
-        labs: labNeed * 1.42 + cellNeed * 0.15 + getSwarmFocusOscillation('labs'),
+        labs: labNeed * 1.68 + cellNeed * 0.22 + getSwarmFocusOscillation('labs'),
         factory: factoryNeed * 1.35 + fuelNeed * 0.35 + getSwarmFocusOscillation('factory'),
         crew: crewFaultNeed * 1.5 + crewNeed * 0.95 + fuelNeed * 0.18 + getSwarmFocusOscillation('crew'),
       };
@@ -1147,6 +1150,7 @@ export default function PowerGridBackground() {
     }
 
     function clearClaimCounts(claims: ClaimCounts) {
+      claims.fromCoal.clear();
       claims.toGenerator.clear();
       claims.fromGenerator.clear();
       claims.toBattery.clear();
@@ -2220,16 +2224,16 @@ export default function PowerGridBackground() {
         1,
       );
       const weights: Record<TaskType, number> = {
-        'fuel-generator': 0.9 + fuelNeed * 1.4,
+        'fuel-generator': 0.82 + fuelNeed * 1.12,
         'charge-battery': 0.9 + cellNeed * 1.3,
-        'power-lab': 0.9 + labNeed * 1.35,
+        'power-lab': 1.02 + labNeed * 1.62,
         'power-factory': 0.85 + factoryNeed * 1.45,
       };
 
       if (currentStrategy.key === 'fuel') {
-        weights['fuel-generator'] *= 2.25;
+        weights['fuel-generator'] *= 1.95;
         weights['charge-battery'] *= 0.94;
-        weights['power-lab'] *= 0.72;
+        weights['power-lab'] *= 0.85;
         weights['power-factory'] *= 1.35;
       } else if (currentStrategy.key === 'cells') {
         weights['charge-battery'] *= 2.05;
@@ -2237,7 +2241,7 @@ export default function PowerGridBackground() {
         weights['power-lab'] *= 0.84;
         weights['power-factory'] *= 0.92;
       } else if (currentStrategy.key === 'labs') {
-        weights['power-lab'] *= 2.1;
+        weights['power-lab'] *= 2.35;
         weights['charge-battery'] *= 1.18;
         weights['power-factory'] *= 0.92;
       } else if (currentStrategy.key === 'factory') {
@@ -2292,12 +2296,12 @@ export default function PowerGridBackground() {
       incomingClaims = 0,
     ) {
       const load = (crowding.get(structureId) || 0) + incomingClaims;
-      if (load <= 2) {
+      if (load <= 1) {
         return 0;
       }
 
-      const excess = load - 2;
-      return excess * excess * 22 + load * 7;
+      const excess = load - 1;
+      return excess * excess * 34 + load * 10;
     }
 
     function assignTask(
@@ -2340,7 +2344,7 @@ export default function PowerGridBackground() {
           distance(workerX, workerY, source.x, source.y) * 0.35 +
           distance(source.x, source.y, generator.x, generator.y) * 0.45;
         const sourceCrowdingPenalty =
-          getStructureCrowdingPenalty(source.id, structureCrowding) * 0.42;
+          getStructureCrowdingPenalty(source.id, structureCrowding, claims.fromCoal.get(source.id) || 0) * 0.58;
         const targetCrowdingPenalty =
           getStructureCrowdingPenalty(generator.id, structureCrowding, pendingFuel);
         const score =
