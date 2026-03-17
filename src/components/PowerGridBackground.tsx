@@ -228,15 +228,17 @@ const COLORS = {
 
 const WORKER_RADIUS = 8;
 const WORKER_MIN_SEPARATION = WORKER_RADIUS * 2 + 4;
-const LOCAL_AVOIDANCE_RADIUS = 26;
-const LOCAL_AVOIDANCE_LOOKAHEAD = 0.16;
+const LOCAL_AVOIDANCE_RADIUS = 32;
+const LOCAL_AVOIDANCE_LOOKAHEAD = 0.22;
 const LOCAL_AVOIDANCE_MAX_NEIGHBORS = 18;
 const LOCAL_AVOIDANCE_MAX_FORCE = 210;
 const LOCAL_AVOIDANCE_PUSH = 130;
 const LOCAL_AVOIDANCE_OVERLAP_PUSH = 36;
 const LOCAL_AVOIDANCE_SIDE_SLIP = 18;
 const STRUCTURE_PADDING = 22;
-const OBSTACLE_REPULSION_RANGE = 34;
+const OBSTACLE_REPULSION_RANGE = 54;
+const OBSTACLE_LOOKAHEAD = 0.24;
+const OBSTACLE_SLIDE_FORCE = 145;
 const MAX_GENERATOR_OUTPUT = 5;
 const WORKER_CAP = 100;
 const WORKER_TARGET_BASE = 60;
@@ -251,7 +253,7 @@ const NAVIGATION_CELL_SIZE = 10;
 const FLOCKING_RADIUS = 72;
 const FLOCKING_CELL_SIZE = FLOCKING_RADIUS;
 const GOLDEN_ANGLE = 2.399963229728653;
-const TRAFFIC_PENALTY_SCALE = 2.8;
+const TRAFFIC_PENALTY_SCALE = 4.4;
 const SPATIAL_GRID_KEY_STRIDE = 100000;
 const PATH_NEIGHBOR_STEPS = [
   { dc: 1, dr: 0, cost: 1 },
@@ -730,6 +732,7 @@ function deriveMetrics(
 }
 
 export default function PowerGridBackground() {
+  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const structureIndexRef = useRef<StructureIndex>(createStructureIndex([]));
   const obstacleRectsRef = useRef<ObstacleRect[]>([]);
@@ -792,13 +795,15 @@ export default function PowerGridBackground() {
   }, [isHelpOpen, isMenuMinimized]);
 
   useEffect(() => {
+    const backgroundCanvas = backgroundCanvasRef.current!;
     const canvas = canvasRef.current!;
-    if (!canvas) {
+    if (!backgroundCanvas || !canvas) {
       return;
     }
 
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
-    if (!ctx) {
+    const backgroundCtx = backgroundCanvas.getContext('2d', { alpha: false, desynchronized: true })!;
+    const ctx = canvas.getContext('2d', { alpha: true, desynchronized: true })!;
+    if (!backgroundCtx || !ctx) {
       return;
     }
 
@@ -813,6 +818,7 @@ export default function PowerGridBackground() {
     let gridCacheCanvas: HTMLCanvasElement | null = null;
     let networkHintsCanvas: HTMLCanvasElement | null = null;
     let mapClipPath: Path2D | null = null;
+    let staticLayerDirty = true;
     const reusableClaims = createClaimCounts();
     const reusableStructureCrowding = new Map<number, number>();
     const navigatorWithHints = navigator as Navigator & {
@@ -848,6 +854,22 @@ export default function PowerGridBackground() {
       1,
       Math.min(performanceProfile.maxDpr, window.devicePixelRatio || 1, budgetedDpr),
     );
+    const WORKER_SPRITE_SIZE = 36;
+    const WORKER_SPRITE_HALF = WORKER_SPRITE_SIZE * 0.5;
+    const WORKER_SPRITE_ANGLES = performanceProfile.lowPower ? 36 : 48;
+    const WORKER_SPRITE_VARIANTS: Array<{
+      key: string;
+      malfunctioning: boolean;
+      carrying: ItemType | null;
+    }> = [
+      { key: 'normal-empty', malfunctioning: false, carrying: null },
+      { key: 'normal-coal', malfunctioning: false, carrying: 'coal' },
+      { key: 'normal-cell', malfunctioning: false, carrying: 'cell' },
+      { key: 'fault-empty', malfunctioning: true, carrying: null },
+      { key: 'fault-coal', malfunctioning: true, carrying: 'coal' },
+      { key: 'fault-cell', malfunctioning: true, carrying: 'cell' },
+    ];
+    const workerSpriteCache = new Map<string, HTMLCanvasElement[]>();
 
     function getLoadCycleValue() {
       const primary = Math.sin(simulationTime * 0.18) * 0.18;
@@ -1253,6 +1275,7 @@ export default function PowerGridBackground() {
         pathCacheRef.current.clear();
         backgroundSceneCanvas = null;
         mapClipPath = null;
+        invalidateStaticLayer();
       }
 
       return layout;
@@ -1471,10 +1494,10 @@ export default function PowerGridBackground() {
         activeWorkerTrafficField !== null &&
         navigationGrid !== null &&
         nextWaypointCell !== null &&
-        simulationTime - worker.routeRefreshAt > 0.45 &&
+        simulationTime - worker.routeRefreshAt > 0.28 &&
         activeWorkerTrafficField[
           getCellIndex(navigationGrid, nextWaypointCell.col, nextWaypointCell.row)
-        ] > 0.75;
+        ] > 0.55;
 
       if (!routeKey) {
         clearWorkerRoute(worker);
@@ -1630,6 +1653,7 @@ export default function PowerGridBackground() {
 
       backgroundSceneCanvas = null;
       networkHintsCanvas = null;
+      invalidateStaticLayer();
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
       });
@@ -1647,6 +1671,9 @@ export default function PowerGridBackground() {
 
     function applyObstacleAvoidance(worker: Worker, dt: number) {
       const obstacles = obstacleRectsRef.current;
+      const travel = getPreferredTravelDirection(worker);
+      const projectedX = worker.x + worker.vx * OBSTACLE_LOOKAHEAD;
+      const projectedY = worker.y + worker.vy * OBSTACLE_LOOKAHEAD;
 
       for (let index = 0; index < obstacles.length; index += 1) {
         const rect = obstacles[index];
@@ -1654,20 +1681,46 @@ export default function PowerGridBackground() {
         const right = rect.right + WORKER_RADIUS;
         const top = rect.top - WORKER_RADIUS;
         const bottom = rect.bottom + WORKER_RADIUS;
-        const nearestX = clamp(worker.x, left, right);
-        const nearestY = clamp(worker.y, top, bottom);
-        const dx = worker.x - nearestX;
-        const dy = worker.y - nearestY;
-        const dist = Math.hypot(dx, dy);
+        const nearestX = clamp(projectedX, left, right);
+        const nearestY = clamp(projectedY, top, bottom);
+        let dx = projectedX - nearestX;
+        let dy = projectedY - nearestY;
+        let distSq = dx * dx + dy * dy;
 
-        if (dist > OBSTACLE_REPULSION_RANGE) {
-          return;
+        if (distSq > OBSTACLE_REPULSION_RANGE * OBSTACLE_REPULSION_RANGE) {
+          continue;
         }
 
-        const safeDist = dist || 0.001;
+        if (distSq <= 0.000001) {
+          const rectCenterX = (left + right) * 0.5;
+          const rectCenterY = (top + bottom) * 0.5;
+          dx = projectedX - rectCenterX;
+          dy = projectedY - rectCenterY;
+          distSq = dx * dx + dy * dy;
+        }
+
+        const safeDist = distSq > 0.000001 ? Math.sqrt(distSq) : 0.001;
+        const nx = dx / safeDist;
+        const ny = dy / safeDist;
         const force = (OBSTACLE_REPULSION_RANGE - safeDist) / OBSTACLE_REPULSION_RANGE;
-        worker.vx += (dx / safeDist) * force * 220 * dt;
-        worker.vy += (dy / safeDist) * force * 220 * dt;
+        const forceSq = force * force;
+        worker.vx += nx * forceSq * 320 * dt;
+        worker.vy += ny * forceSq * 320 * dt;
+
+        if (travel.x !== 0 || travel.y !== 0) {
+          const leftTangentX = -ny;
+          const leftTangentY = nx;
+          const rightTangentX = ny;
+          const rightTangentY = -nx;
+          const leftScore = leftTangentX * travel.x + leftTangentY * travel.y;
+          const rightScore = rightTangentX * travel.x + rightTangentY * travel.y;
+          const tangentX = leftScore >= rightScore ? leftTangentX : rightTangentX;
+          const tangentY = leftScore >= rightScore ? leftTangentY : rightTangentY;
+          const faceIntoObstacle = Math.abs(travel.x * nx + travel.y * ny);
+          const slideForce = (1 - faceIntoObstacle) * forceSq;
+          worker.vx += tangentX * slideForce * OBSTACLE_SLIDE_FORCE * dt;
+          worker.vy += tangentY * slideForce * OBSTACLE_SLIDE_FORCE * dt;
+        }
       }
     }
 
@@ -1968,6 +2021,7 @@ export default function PowerGridBackground() {
       gridCacheCanvas = null;
       networkHintsCanvas = null;
       mapClipPath = null;
+      invalidateStaticLayer();
 
       world.structures.forEach((node) => {
         constrainPointToMap(node, STRUCTURE_PADDING);
@@ -2016,6 +2070,13 @@ export default function PowerGridBackground() {
       world.width = nextWidth;
       world.height = nextHeight;
 
+      backgroundCanvas.width = Math.floor(nextWidth * dpr);
+      backgroundCanvas.height = Math.floor(nextHeight * dpr);
+      backgroundCanvas.style.width = `${nextWidth}px`;
+      backgroundCanvas.style.height = `${nextHeight}px`;
+      backgroundCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      backgroundCtx.imageSmoothingEnabled = false;
+
       canvas.width = Math.floor(nextWidth * dpr);
       canvas.height = Math.floor(nextHeight * dpr);
       canvas.style.width = `${nextWidth}px`;
@@ -2026,6 +2087,7 @@ export default function PowerGridBackground() {
       gridCacheCanvas = null;
       networkHintsCanvas = null;
       mapClipPath = null;
+      invalidateStaticLayer();
       refreshMapLayout(nextWidth, nextHeight);
 
       if (world.structures.length === 0) {
@@ -2407,6 +2469,82 @@ export default function PowerGridBackground() {
       worker.vy += (desiredY - worker.vy) * Math.min(1, dt * 2.4);
     }
 
+    function getPreferredTravelDirection(worker: Worker): RoutePoint {
+      const waypoint = worker.route[worker.routeIndex];
+      if (waypoint) {
+        const dx = waypoint.x - worker.x;
+        const dy = waypoint.y - worker.y;
+        const length = Math.hypot(dx, dy);
+        if (length > 0.001) {
+          return {
+            x: dx / length,
+            y: dy / length,
+          };
+        }
+      }
+
+      const speed = Math.hypot(worker.vx, worker.vy);
+      if (speed > 0.001) {
+        return {
+          x: worker.vx / speed,
+          y: worker.vy / speed,
+        };
+      }
+
+      return { x: 0, y: 0 };
+    }
+
+    function sampleObstaclePressure(x: number, y: number, range: number) {
+      let pressureX = 0;
+      let pressureY = 0;
+      const obstacles = obstacleRectsRef.current;
+
+      for (let index = 0; index < obstacles.length; index += 1) {
+        const rect = obstacles[index];
+        const left = rect.left - WORKER_RADIUS;
+        const right = rect.right + WORKER_RADIUS;
+        const top = rect.top - WORKER_RADIUS;
+        const bottom = rect.bottom + WORKER_RADIUS;
+        const nearestX = clamp(x, left, right);
+        const nearestY = clamp(y, top, bottom);
+        let dx = x - nearestX;
+        let dy = y - nearestY;
+        let distSq = dx * dx + dy * dy;
+
+        if (distSq > range * range) {
+          continue;
+        }
+
+        if (distSq <= 0.000001) {
+          const rectCenterX = (left + right) * 0.5;
+          const rectCenterY = (top + bottom) * 0.5;
+          dx = x - rectCenterX;
+          dy = y - rectCenterY;
+          distSq = dx * dx + dy * dy;
+        }
+
+        const safeDist = distSq > 0.000001 ? Math.sqrt(distSq) : 0.001;
+        const force = (range - safeDist) / range;
+        pressureX += (dx / safeDist) * force;
+        pressureY += (dy / safeDist) * force;
+      }
+
+      const world = worldRef.current;
+      if (x < range) {
+        pressureX += (range - x) / range;
+      } else if (x > world.width - range) {
+        pressureX -= (x - (world.width - range)) / range;
+      }
+
+      if (y < range) {
+        pressureY += (range - y) / range;
+      } else if (y > world.height - range) {
+        pressureY -= (y - (world.height - range)) / range;
+      }
+
+      return { x: pressureX, y: pressureY };
+    }
+
     function getWorkerSpatialCellKey(col: number, row: number) {
       return col * SPATIAL_GRID_KEY_STRIDE + row;
     }
@@ -2668,6 +2806,12 @@ export default function PowerGridBackground() {
       const projectedWorkerY = worker.y + worker.vy * LOCAL_AVOIDANCE_LOOKAHEAD;
       const minGap = WORKER_MIN_SEPARATION + 2;
       const localAvoidanceRadiusSq = LOCAL_AVOIDANCE_RADIUS * LOCAL_AVOIDANCE_RADIUS;
+      const obstaclePressure = sampleObstaclePressure(
+        projectedWorkerX,
+        projectedWorkerY,
+        OBSTACLE_REPULSION_RANGE + 18,
+      );
+      const travel = getPreferredTravelDirection(worker);
       const workerCol = workerSpatialGrid.cols[workerIndex];
       const workerRow = workerSpatialGrid.rows[workerIndex];
       let reachedNeighborCap = false;
@@ -2708,7 +2852,25 @@ export default function PowerGridBackground() {
             const closeness2 = closeness * closeness;
             const nx = dx / dist;
             const ny = dy / dist;
-            const side = worker.id < other.id ? 1 : -1;
+            const leftSlipX = -ny;
+            const leftSlipY = nx;
+            const rightSlipX = ny;
+            const rightSlipY = -nx;
+            const leftScore =
+              leftSlipX * obstaclePressure.x +
+              leftSlipY * obstaclePressure.y +
+              (leftSlipX * travel.x + leftSlipY * travel.y) * 0.18;
+            const rightScore =
+              rightSlipX * obstaclePressure.x +
+              rightSlipY * obstaclePressure.y +
+              (rightSlipX * travel.x + rightSlipY * travel.y) * 0.18;
+            const side = leftScore > rightScore + 0.0001
+              ? 1
+              : rightScore > leftScore + 0.0001
+                ? -1
+                : worker.id < other.id
+                  ? 1
+                  : -1;
 
             avoidX += nx * (LOCAL_AVOIDANCE_PUSH * closeness2);
             avoidY += ny * (LOCAL_AVOIDANCE_PUSH * closeness2);
@@ -3136,10 +3298,6 @@ export default function PowerGridBackground() {
           }
         }
       }
-
-      if (gridCacheCanvas) {
-        ctx.drawImage(gridCacheCanvas, 0, 0, world.width, world.height);
-      }
     }
 
     function drawBackgroundScene() {
@@ -3153,8 +3311,6 @@ export default function PowerGridBackground() {
         const backgroundCtx = backgroundSceneCanvas.getContext('2d');
         if (!backgroundCtx) {
           backgroundSceneCanvas = null;
-          ctx.fillStyle = COLORS.paper;
-          ctx.fillRect(0, 0, world.width, world.height);
           return;
         }
 
@@ -3173,9 +3329,6 @@ export default function PowerGridBackground() {
         }
       }
 
-      if (backgroundSceneCanvas) {
-        ctx.drawImage(backgroundSceneCanvas, 0, 0, world.width, world.height);
-      }
     }
 
     function drawNetworkHints() {
@@ -3281,9 +3434,34 @@ export default function PowerGridBackground() {
         });
       }
 
-      if (networkHintsCanvas) {
-        ctx.drawImage(networkHintsCanvas, 0, 0, world.width, world.height);
+    }
+
+    function invalidateStaticLayer() {
+      staticLayerDirty = true;
+    }
+
+    function renderStaticLayer() {
+      const world = worldRef.current;
+      backgroundCtx.clearRect(0, 0, world.width, world.height);
+      drawBackgroundScene();
+      if (backgroundSceneCanvas) {
+        backgroundCtx.drawImage(backgroundSceneCanvas, 0, 0, world.width, world.height);
+      } else {
+        backgroundCtx.fillStyle = COLORS.paper;
+        backgroundCtx.fillRect(0, 0, world.width, world.height);
       }
+
+      if (!performanceProfile.simplifiedVisuals) {
+        drawNetworkHints();
+        if (networkHintsCanvas) {
+          backgroundCtx.save();
+          clipContextToMap(backgroundCtx);
+          backgroundCtx.drawImage(networkHintsCanvas, 0, 0, world.width, world.height);
+          backgroundCtx.restore();
+        }
+      }
+
+      staticLayerDirty = false;
     }
 
     function drawLabel(text: string, x: number, y: number) {
@@ -3407,54 +3585,114 @@ export default function PowerGridBackground() {
       drawLabel('FACT', x, y + 33);
     }
 
-    function drawWorker(worker: Worker) {
-      const x = Math.round(worker.x);
-      const y = Math.round(worker.y);
+    function drawWorkerGlyph(
+      targetCtx: CanvasRenderingContext2D,
+      isMalfunctioning: boolean,
+      carrying: ItemType | null,
+    ) {
       const bodyLength = 8;
       const tailLength = 5;
 
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(worker.angle);
+      targetCtx.fillStyle = isMalfunctioning ? COLORS.dangerDark : COLORS.ink;
+      targetCtx.beginPath();
+      targetCtx.moveTo(bodyLength, 0);
+      targetCtx.lineTo(-tailLength, -5);
+      targetCtx.lineTo(-1, 0);
+      targetCtx.lineTo(-tailLength, 5);
+      targetCtx.closePath();
+      targetCtx.fill();
 
-      const isMalfunctioning = worker.malfunctionTimer > 0;
-
-      ctx.fillStyle = isMalfunctioning ? COLORS.dangerDark : COLORS.ink;
-      ctx.beginPath();
-      ctx.moveTo(bodyLength, 0);
-      ctx.lineTo(-tailLength, -5);
-      ctx.lineTo(-1, 0);
-      ctx.lineTo(-tailLength, 5);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = isMalfunctioning ? COLORS.dangerLight : COLORS.lime;
-      ctx.fillRect(1, -1, 2, 2);
+      targetCtx.fillStyle = isMalfunctioning ? COLORS.dangerLight : COLORS.lime;
+      targetCtx.fillRect(1, -1, 2, 2);
 
       if (isMalfunctioning) {
-        ctx.strokeStyle = COLORS.danger;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
-        ctx.stroke();
+        targetCtx.strokeStyle = COLORS.danger;
+        targetCtx.lineWidth = 1;
+        targetCtx.beginPath();
+        targetCtx.arc(0, 0, 8, 0, Math.PI * 2);
+        targetCtx.stroke();
       }
 
-      if (worker.carrying) {
-        ctx.strokeStyle = COLORS.green;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(4, -2);
-        ctx.lineTo(8, -4);
-        ctx.moveTo(4, 2);
-        ctx.lineTo(8, 4);
-        ctx.stroke();
-        ctx.fillStyle = worker.carrying === 'coal' ? COLORS.ink : COLORS.green;
-        ctx.fillRect(7, -2, 4, 4);
-        ctx.strokeStyle = worker.carrying === 'coal' ? COLORS.lime : COLORS.ink;
-        ctx.strokeRect(7, -2, 4, 4);
+      if (carrying) {
+        targetCtx.strokeStyle = COLORS.green;
+        targetCtx.lineWidth = 1;
+        targetCtx.beginPath();
+        targetCtx.moveTo(4, -2);
+        targetCtx.lineTo(8, -4);
+        targetCtx.moveTo(4, 2);
+        targetCtx.lineTo(8, 4);
+        targetCtx.stroke();
+        targetCtx.fillStyle = carrying === 'coal' ? COLORS.ink : COLORS.green;
+        targetCtx.fillRect(7, -2, 4, 4);
+        targetCtx.strokeStyle = carrying === 'coal' ? COLORS.lime : COLORS.ink;
+        targetCtx.strokeRect(7, -2, 4, 4);
+      }
+    }
+
+    function getWorkerSpriteFrames(
+      key: string,
+      isMalfunctioning: boolean,
+      carrying: ItemType | null,
+    ) {
+      const cached = workerSpriteCache.get(key);
+      if (cached) {
+        return cached;
       }
 
-      ctx.restore();
+      const frames: HTMLCanvasElement[] = [];
+      for (let index = 0; index < WORKER_SPRITE_ANGLES; index += 1) {
+        const sprite = document.createElement('canvas');
+        sprite.width = WORKER_SPRITE_SIZE;
+        sprite.height = WORKER_SPRITE_SIZE;
+        const spriteCtx = sprite.getContext('2d');
+        if (!spriteCtx) {
+          continue;
+        }
+
+        spriteCtx.imageSmoothingEnabled = false;
+        spriteCtx.translate(WORKER_SPRITE_HALF, WORKER_SPRITE_HALF);
+        spriteCtx.rotate((index / WORKER_SPRITE_ANGLES) * Math.PI * 2);
+        drawWorkerGlyph(spriteCtx, isMalfunctioning, carrying);
+        frames.push(sprite);
+      }
+
+      workerSpriteCache.set(key, frames);
+      return frames;
+    }
+
+    function warmWorkerSpriteCache() {
+      for (let index = 0; index < WORKER_SPRITE_VARIANTS.length; index += 1) {
+        const variant = WORKER_SPRITE_VARIANTS[index];
+        getWorkerSpriteFrames(variant.key, variant.malfunctioning, variant.carrying);
+      }
+    }
+
+    function drawWorker(worker: Worker) {
+      const variantKey = worker.malfunctionTimer > 0
+        ? worker.carrying
+          ? `fault-${worker.carrying}`
+          : 'fault-empty'
+        : worker.carrying
+          ? `normal-${worker.carrying}`
+          : 'normal-empty';
+      const frames = getWorkerSpriteFrames(
+        variantKey,
+        worker.malfunctionTimer > 0,
+        worker.carrying,
+      );
+      const normalizedAngle = ((worker.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+      const frameIndex =
+        Math.round((normalizedAngle / (Math.PI * 2)) * WORKER_SPRITE_ANGLES) % WORKER_SPRITE_ANGLES;
+      const sprite = frames[frameIndex];
+      if (!sprite) {
+        return;
+      }
+
+      ctx.drawImage(
+        sprite,
+        Math.round(worker.x - WORKER_SPRITE_HALF),
+        Math.round(worker.y - WORKER_SPRITE_HALF),
+      );
     }
 
     function drawParticles() {
@@ -3488,13 +3726,10 @@ export default function PowerGridBackground() {
 
     function drawScene() {
       const world = worldRef.current;
-      drawBackgroundScene();
+      ctx.clearRect(0, 0, world.width, world.height);
 
       ctx.save();
       clipToMap();
-      if (!performanceProfile.simplifiedVisuals) {
-        drawNetworkHints();
-      }
       ctx.font = "11px 'SFMono-Regular', 'JetBrains Mono', monospace";
       ctx.textAlign = 'center';
       for (let index = 0; index < world.structures.length; index += 1) {
@@ -3532,6 +3767,9 @@ export default function PowerGridBackground() {
       updateSwarmStrategy(dt);
       updateStructures(dt);
       updateWorkers(dt);
+      if (staticLayerDirty) {
+        renderStaticLayer();
+      }
       drawScene();
 
       statsTimer += dt;
@@ -3562,6 +3800,7 @@ export default function PowerGridBackground() {
       }
     });
 
+    warmWorkerSpriteCache();
     resizeWorld();
     window.addEventListener('resize', resizeWorld);
     window.addEventListener('scroll', scheduleLayoutSync, { passive: true });
@@ -3581,6 +3820,23 @@ export default function PowerGridBackground() {
   return (
     <>
       <canvas
+        ref={backgroundCanvasRef}
+        aria-hidden="true"
+        style={{
+          position: 'fixed',
+          inset: 0,
+          width: '100vw',
+          height: '100vh',
+          zIndex: 0,
+          display: 'block',
+          cursor: 'default',
+          pointerEvents: 'none',
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+          contain: 'strict',
+        }}
+      />
+      <canvas
         ref={canvasRef}
         aria-hidden="true"
         style={{
@@ -3591,6 +3847,10 @@ export default function PowerGridBackground() {
           zIndex: 0,
           display: 'block',
           cursor: 'default',
+          pointerEvents: 'none',
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+          contain: 'strict',
         }}
       />
 
