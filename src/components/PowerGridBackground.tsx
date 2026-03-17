@@ -817,6 +817,10 @@ export default function PowerGridBackground() {
     let simulationTime = 0;
     let activeWorkerTrafficField: Float32Array | null = null;
     let workerTrafficFieldBuffer: Float32Array | null = null;
+    const workerTrafficFieldTouchedCells: number[] = [];
+    let workerTrafficFieldVersion = 0;
+    let lastWorkerTrafficFieldBuildAt = Number.NEGATIVE_INFINITY;
+    const trafficRouteCache = new Map<string, RoutePoint[]>();
     let backgroundSceneCanvas: HTMLCanvasElement | null = null;
     let gridCacheCanvas: HTMLCanvasElement | null = null;
     let networkHintsCanvas: HTMLCanvasElement | null = null;
@@ -850,6 +854,11 @@ export default function PowerGridBackground() {
       : largeViewport
         ? 8_500_000
         : Number.POSITIVE_INFINITY;
+    const trafficFieldRefreshIntervalSeconds = performanceProfile.lowPower
+      ? 0.2
+      : largeViewport
+        ? 0.12
+        : 0.08;
     const budgetedDpr = Number.isFinite(surfacePixelBudget)
       ? Math.sqrt(surfacePixelBudget / viewportPixels)
       : performanceProfile.maxDpr;
@@ -1292,6 +1301,10 @@ export default function PowerGridBackground() {
           navigationVersionRef.current,
         );
         pathCacheRef.current.clear();
+        trafficRouteCache.clear();
+        activeWorkerTrafficField = null;
+        workerTrafficFieldTouchedCells.length = 0;
+        lastWorkerTrafficFieldBuildAt = Number.NEGATIVE_INFINITY;
         backgroundSceneCanvas = null;
         mapClipPath = null;
         invalidateStaticLayer();
@@ -1300,7 +1313,13 @@ export default function PowerGridBackground() {
       return layout;
     }
 
-    function planPath(startX: number, startY: number, endX: number, endY: number): RoutePoint[] {
+    function planPath(
+      startX: number,
+      startY: number,
+      endX: number,
+      endY: number,
+      useTrafficAwareRouting: boolean,
+    ): RoutePoint[] {
       const grid = navigationGridRef.current;
       if (!grid) {
         return [{ x: endX, y: endY }];
@@ -1315,13 +1334,14 @@ export default function PowerGridBackground() {
         return [{ x: endX, y: endY }];
       }
 
-      const useTrafficAwareRouting = activeWorkerTrafficField !== null;
-      const cacheKey = `${grid.version}:${start.col},${start.row}:${goal.col},${goal.row}`;
-      if (!useTrafficAwareRouting) {
-        const cachedPath = pathCacheRef.current.get(cacheKey);
-        if (cachedPath) {
-          return [...cachedPath, { x: endX, y: endY }];
-        }
+      const trafficField = useTrafficAwareRouting ? activeWorkerTrafficField : null;
+      const cacheKey = useTrafficAwareRouting
+        ? `${grid.version}:traffic:${workerTrafficFieldVersion}:${start.col},${start.row}:${goal.col},${goal.row}`
+        : `${grid.version}:base:${start.col},${start.row}:${goal.col},${goal.row}`;
+      const routeCache = useTrafficAwareRouting ? trafficRouteCache : pathCacheRef.current;
+      const cachedPath = routeCache.get(cacheKey);
+      if (cachedPath) {
+        return [...cachedPath, { x: endX, y: endY }];
       }
 
       const totalCells = grid.cols * grid.rows;
@@ -1431,9 +1451,7 @@ export default function PowerGridBackground() {
             pathCells.shift();
           }
 
-          if (!useTrafficAwareRouting) {
-            pathCacheRef.current.set(cacheKey, pathCells);
-          }
+          routeCache.set(cacheKey, pathCells);
           return [...pathCells, { x: endX, y: endY }];
         }
 
@@ -1442,12 +1460,13 @@ export default function PowerGridBackground() {
         const currentCol = currentIndex % grid.cols;
         const currentRow = Math.floor(currentIndex / grid.cols);
 
-        PATH_NEIGHBOR_STEPS.forEach(({ dc, dr, cost }) => {
+        for (let neighborStepIndex = 0; neighborStepIndex < PATH_NEIGHBOR_STEPS.length; neighborStepIndex += 1) {
+          const { dc, dr, cost } = PATH_NEIGHBOR_STEPS[neighborStepIndex];
           const nextCol = currentCol + dc;
           const nextRow = currentRow + dr;
 
           if (isCellBlocked(grid, nextCol, nextRow)) {
-            return;
+            continue;
           }
 
           if (
@@ -1456,22 +1475,22 @@ export default function PowerGridBackground() {
             (isCellBlocked(grid, currentCol + dc, currentRow) ||
               isCellBlocked(grid, currentCol, currentRow + dr))
           ) {
-            return;
+            continue;
           }
 
           const neighborIndex = getCellIndex(grid, nextCol, nextRow);
           if (closed[neighborIndex] === mark) {
-            return;
+            continue;
           }
 
           const trafficPenalty =
             useTrafficAwareRouting && neighborIndex !== goalIndex
-              ? (activeWorkerTrafficField?.[neighborIndex] ?? 0) * TRAFFIC_PENALTY_SCALE
+              ? (trafficField?.[neighborIndex] ?? 0) * TRAFFIC_PENALTY_SCALE
               : 0;
           const tentativeScore = gScore[currentIndex] + cost + trafficPenalty;
 
           if (seen[neighborIndex] === mark && tentativeScore >= gScore[neighborIndex]) {
-            return;
+            continue;
           }
 
           cameFrom[neighborIndex] = currentIndex;
@@ -1480,7 +1499,7 @@ export default function PowerGridBackground() {
             tentativeScore + Math.hypot(goal.col - nextCol, goal.row - nextRow);
           seen[neighborIndex] = mark;
           pushOpenCell(neighborIndex, fScore[neighborIndex]);
-        });
+        }
       }
 
       return [{ x: endX, y: endY }];
@@ -1509,14 +1528,17 @@ export default function PowerGridBackground() {
         navigationGrid && nextWaypoint
           ? pointToCell(navigationGrid, nextWaypoint.x, nextWaypoint.y)
           : null;
-      const shouldRefreshForTraffic =
+      const nextWaypointTraffic =
         activeWorkerTrafficField !== null &&
         navigationGrid !== null &&
-        nextWaypointCell !== null &&
+        nextWaypointCell !== null
+          ? activeWorkerTrafficField[
+              getCellIndex(navigationGrid, nextWaypointCell.col, nextWaypointCell.row)
+            ]
+          : 0;
+      const shouldRefreshForTraffic =
         simulationTime - worker.routeRefreshAt > 0.28 &&
-        activeWorkerTrafficField[
-          getCellIndex(navigationGrid, nextWaypointCell.col, nextWaypointCell.row)
-        ] > 0.55;
+        nextWaypointTraffic > 0.55;
 
       if (!routeKey) {
         clearWorkerRoute(worker);
@@ -1532,7 +1554,7 @@ export default function PowerGridBackground() {
         return;
       }
 
-      worker.route = planPath(worker.x, worker.y, targetX, targetY);
+      worker.route = planPath(worker.x, worker.y, targetX, targetY, shouldRefreshForTraffic);
       worker.routeIndex = 0;
       worker.routeKey = routeKey;
       worker.routeVersion = currentRouteVersion;
@@ -2631,14 +2653,19 @@ export default function PowerGridBackground() {
     function buildWorkerTrafficField(workers: Worker[]): Float32Array | null {
       const grid = navigationGridRef.current;
       if (!grid) {
+        trafficRouteCache.clear();
         return null;
       }
 
       const totalCells = grid.cols * grid.rows;
       if (!workerTrafficFieldBuffer || workerTrafficFieldBuffer.length !== totalCells) {
         workerTrafficFieldBuffer = new Float32Array(totalCells);
+        workerTrafficFieldTouchedCells.length = 0;
       } else {
-        workerTrafficFieldBuffer.fill(0);
+        for (let index = 0; index < workerTrafficFieldTouchedCells.length; index += 1) {
+          workerTrafficFieldBuffer[workerTrafficFieldTouchedCells[index]] = 0;
+        }
+        workerTrafficFieldTouchedCells.length = 0;
       }
       const field = workerTrafficFieldBuffer;
 
@@ -2655,12 +2682,44 @@ export default function PowerGridBackground() {
             }
 
             const distanceWeight = dc === 0 && dr === 0 ? 1.35 : 0.55;
-            field[getCellIndex(grid, nextCol, nextRow)] += distanceWeight;
+            const cellIndex = getCellIndex(grid, nextCol, nextRow);
+            if (field[cellIndex] === 0) {
+              workerTrafficFieldTouchedCells.push(cellIndex);
+            }
+            field[cellIndex] += distanceWeight;
           }
         }
       }
 
+      workerTrafficFieldVersion = (workerTrafficFieldVersion + 1) >>> 0;
+      if (workerTrafficFieldVersion === 0) {
+        workerTrafficFieldVersion = 1;
+      }
+      trafficRouteCache.clear();
       return field;
+    }
+
+    function refreshWorkerTrafficField(workers: Worker[]) {
+      const grid = navigationGridRef.current;
+      if (!grid) {
+        activeWorkerTrafficField = null;
+        trafficRouteCache.clear();
+        return null;
+      }
+
+      const totalCells = grid.cols * grid.rows;
+      const shouldRebuildTrafficField =
+        !activeWorkerTrafficField ||
+        activeWorkerTrafficField.length !== totalCells ||
+        simulationTime - lastWorkerTrafficFieldBuildAt >= trafficFieldRefreshIntervalSeconds;
+
+      if (!shouldRebuildTrafficField) {
+        return activeWorkerTrafficField;
+      }
+
+      activeWorkerTrafficField = buildWorkerTrafficField(workers);
+      lastWorkerTrafficFieldBuildAt = simulationTime;
+      return activeWorkerTrafficField;
     }
 
     function resolveWorkerCrowding(workers: Worker[], passes = 3) {
@@ -3138,7 +3197,7 @@ export default function PowerGridBackground() {
       const structureStats = getStructureStats(structureIndexRef.current);
       const { coalPatches, generators, batteries, labs, factories } = structureStats;
       const taskPriority = getTaskPriorityProfile(world, structureStats, desiredWorkers);
-      activeWorkerTrafficField = buildWorkerTrafficField(world.workers);
+      refreshWorkerTrafficField(world.workers);
       const claims = getClaimCounts();
       const structureCrowding = buildStructureCrowdingMap(world.workers, world.structures);
       const workerSpatialGrid = buildWorkerSpatialGrid(world.workers);
@@ -3286,7 +3345,6 @@ export default function PowerGridBackground() {
       }
 
       resolveWorkerCrowding(world.workers);
-      activeWorkerTrafficField = null;
     }
 
     function drawGrid() {
