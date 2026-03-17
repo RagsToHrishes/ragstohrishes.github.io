@@ -244,9 +244,9 @@ const OBSTACLE_REPULSION_RANGE = 54;
 const OBSTACLE_LOOKAHEAD = 0.24;
 const OBSTACLE_SLIDE_FORCE = 145;
 const MAX_GENERATOR_OUTPUT = 5;
-const WORKER_CAP = 100;
-const WORKER_TARGET_BASE = 60;
-const WORKER_TARGET_SWING = 10;
+const WORKER_CAP = 50;
+const WORKER_TARGET_BASE = 30;
+const WORKER_TARGET_SWING = 5;
 const FACTORY_CHARGE_PER_CELL = 28;
 const FACTORY_POWER_DRAIN = 7.4;
 const FACTORY_BUILD_RATE = 9.2;
@@ -797,7 +797,7 @@ export default function PowerGridBackground() {
   });
 
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isMenuMinimized, setIsMenuMinimized] = useState(false);
+  const [isMenuMinimized, setIsMenuMinimized] = useState(true);
   const [metrics, setMetrics] = useState<Metrics>({
     status: 'Booting grid',
     powerPct: 0,
@@ -951,8 +951,8 @@ export default function PowerGridBackground() {
       const target =
         WORKER_TARGET_BASE +
         Math.sin(simulationTime * 0.16 + 0.4) * WORKER_TARGET_SWING +
-        (getLoadCycleValue() - 0.5) * 8;
-      return clamp(Math.round(target), 42, 72);
+        (getLoadCycleValue() - 0.5) * 4;
+      return clamp(Math.round(target), 21, 36);
     }
 
     function getStrategicDesiredWorkerCount(
@@ -978,16 +978,16 @@ export default function PowerGridBackground() {
         : 0;
 
       let target = baseTarget;
-      target += Math.round(clamp((52 - averageFuel) / 52, 0, 1) * 12);
-      target += Math.round(clamp((44 - averageFactoryCharge) / 44, 0, 1) * 4);
-      target += Math.round(clamp((48 - cellsPct) / 48, 0, 1) * 3);
-      target += Math.round(clamp((55 - averageLabEnergy) / 55, 0, 1) * 3);
+      target += Math.round(clamp((52 - averageFuel) / 52, 0, 1) * 6);
+      target += Math.round(clamp((44 - averageFactoryCharge) / 44, 0, 1) * 2);
+      target += Math.round(clamp((48 - cellsPct) / 48, 0, 1) * 2);
+      target += Math.round(clamp((55 - averageLabEnergy) / 55, 0, 1) * 2);
 
       if (malfunctioning > Math.max(2, Math.round(world.workers.length * 0.1))) {
-        target += 4;
+        target += 2;
       }
 
-      return clamp(target, 42, 84);
+      return clamp(target, 21, 42);
     }
 
     const STRATEGY_KEYS: SwarmFocusKey[] = ['fuel', 'cells', 'labs', 'factory', 'crew'];
@@ -2125,7 +2125,7 @@ export default function PowerGridBackground() {
         });
       }
 
-      const workersPerAnchor = 12;
+      const workersPerAnchor = 6;
       const workerCount = workerAnchors.length * workersPerAnchor;
       for (let index = 0; index < workerCount; index += 1) {
         const anchor = workerAnchors[index % workerAnchors.length];
