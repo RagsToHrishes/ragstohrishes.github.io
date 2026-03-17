@@ -1946,7 +1946,7 @@ export default function PowerGridBackground() {
       const topHallwayOffset = -18;
       const bottomHallwayOffset = 30;
 
-      if (hallwayY.length >= 2) {
+      if (hallwayY.length > 2) {
         const topHallway = hallwayY[0];
         const bottomHallway = hallwayY[hallwayY.length - 1];
         const placements: Array<{ kind: StructureKind; x: number; y: number }> = [
@@ -2249,6 +2249,13 @@ export default function PowerGridBackground() {
         weights['fuel-generator'] *= 1.28;
         weights['charge-battery'] *= 0.95;
         weights['power-lab'] *= 0.82;
+      }
+
+      if (isSmallScreenViewport()) {
+        weights['fuel-generator'] *= 0.88;
+        weights['charge-battery'] *= 1.16;
+        weights['power-lab'] *= 1.24;
+        weights['power-factory'] *= 0.94;
       }
 
       return {
