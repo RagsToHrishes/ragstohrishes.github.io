@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(66, 66, 66, 0.78);
+  background: var(--color-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,7 +14,7 @@
 }
 
 .modalContent {
-  background: rgba(245, 245, 245, 0.96);
+  background: rgba(var(--color-bg-primary-rgb), 0.96);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   max-width: 90vw;
@@ -31,7 +31,7 @@
   align-items: center;
   padding: var(--spacing-lg);
   border-bottom: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-surface);
 }
 
 .modalTitle {
@@ -42,7 +42,7 @@
 }
 
 .closeButton {
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   color: var(--color-text-primary);
   cursor: pointer;
@@ -68,7 +68,7 @@
   overflow: hidden;
   position: relative;
   touch-action: none;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--color-surface);
 }
 
 .posterImage {
@@ -91,7 +91,7 @@
   padding: var(--spacing-md) var(--spacing-lg);
   border-top: 1px solid var(--color-border);
   text-align: center;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--color-surface);
 }
 
 .zoomHint {

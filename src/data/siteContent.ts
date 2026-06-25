@@ -80,7 +80,7 @@ export const profile = {
     },
   ],
   simHint:
-    'The background is an ambient worker-boid power grid. The swarm keeps power, cells, workers, and factory output in balance while the dashboard tracks the cycles.',
+    'The background is Factorybots — a worker-boid power grid. The swarm keeps power, cells, workers, and factory output in balance while the dashboard tracks the cycles.',
 };
 
 export const researchProjects: ResearchProjectEntry[] = [

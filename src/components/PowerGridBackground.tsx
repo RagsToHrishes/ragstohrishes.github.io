@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { simStore } from '../lib/simStore';
 
 type StructureKind = 'coal' | 'generator' | 'battery' | 'lab' | 'factory';
 type ItemType = 'coal' | 'cell';
@@ -216,16 +217,41 @@ type WorkerSpatialGrid = {
   rows: number[];
 };
 
-const COLORS = {
-  paper: '#F5F5F5',
-  lime: '#B9E937',
-  green: '#00B906',
-  danger: '#D9480F',
-  dangerLight: '#FF8C42',
-  dangerDark: '#8F1D14',
-  ink: '#424242',
-  softInk: 'rgba(66, 66, 66, 0.22)',
+type Palette = {
+  paper: string;
+  lime: string;
+  green: string;
+  danger: string;
+  dangerLight: string;
+  dangerDark: string;
+  ink: string;
+  softInk: string;
 };
+
+function getPalette(isDark: boolean): Palette {
+  return isDark
+    ? {
+        paper: '#141414',
+        lime: '#B9E937',
+        green: '#00B906',
+        danger: '#FF8C42',
+        dangerLight: '#FFB380',
+        dangerDark: '#D9480F',
+        ink: '#E8E8E8',
+        softInk: 'rgba(232, 232, 232, 0.22)',
+      }
+    : {
+        paper: '#F5F5F5',
+        lime: '#B9E937',
+        green: '#00B906',
+        danger: '#D9480F',
+        dangerLight: '#FF8C42',
+        dangerDark: '#8F1D14',
+        ink: '#424242',
+        softInk: 'rgba(66, 66, 66, 0.22)',
+      };
+}
+
 
 const DEFAULT_WORKER_RADIUS = 8;
 const SMALL_SCREEN_WORKER_RADIUS = 5;
@@ -663,52 +689,6 @@ function pushHistoryValue(series: number[], value: number) {
   return next.length > HISTORY_LENGTH ? next.slice(-HISTORY_LENGTH) : next;
 }
 
-function buildSparklinePath(values: number[], width = 112, height = 28) {
-  const series = values.length > 0 ? values : [0];
-  if (series.length === 1) {
-    const y = height - (series[0] / 100) * height;
-    return `M 0 ${y.toFixed(2)} L ${width} ${y.toFixed(2)}`;
-  }
-
-  return series
-    .map((value, index) => {
-      const x = (index / (series.length - 1)) * width;
-      const y = height - (value / 100) * height;
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(' ');
-}
-
-type MiniGraphProps = {
-  label: string;
-  value: string;
-  detail: string;
-  values: number[];
-  color: string;
-};
-
-function MiniGraph({ label, value, detail, values, color }: MiniGraphProps) {
-  return (
-    <article className="sim-hotbar__graph">
-      <div className="sim-hotbar__graph-header">
-        <p className="sim-hotbar__graph-label">{label}</p>
-        <p className="sim-hotbar__graph-value">{value}</p>
-      </div>
-      <svg className="sim-hotbar__graph-svg" viewBox="0 0 112 28" preserveAspectRatio="none" aria-hidden="true">
-        <path
-          d={buildSparklinePath(values)}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <p className="sim-hotbar__graph-detail">{detail}</p>
-    </article>
-  );
-}
-
 function deriveMetrics(
   world: World,
   statusOverride?: string,
@@ -796,49 +776,6 @@ export default function PowerGridBackground() {
     particles: [],
   });
 
-  const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isMenuMinimized, setIsMenuMinimized] = useState(true);
-  const [metrics, setMetrics] = useState<Metrics>({
-    status: 'Booting grid',
-    powerPct: 0,
-    cellsPct: 0,
-    workers: 0,
-    workerCap: WORKER_CAP,
-    malfunctioning: 0,
-    factoryPct: 0,
-    factoryCharge: 0,
-    factoryProgress: 0,
-  });
-  const [graphHistory, setGraphHistory] = useState<GraphHistory>({
-    power: [],
-    cells: [],
-    workers: [],
-    factory: [],
-  });
-
-  useEffect(() => {
-    if (!isHelpOpen) {
-      return;
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setIsHelpOpen(false);
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isHelpOpen]);
-
-  useEffect(() => {
-    if (isMenuMinimized && isHelpOpen) {
-      setIsHelpOpen(false);
-    }
-  }, [isHelpOpen, isMenuMinimized]);
-
   useEffect(() => {
     const backgroundCanvas = backgroundCanvasRef.current!;
     const canvas = canvasRef.current!;
@@ -851,6 +788,14 @@ export default function PowerGridBackground() {
     if (!backgroundCtx || !ctx) {
       return;
     }
+
+    let palette = getPalette(document.documentElement.dataset.theme === 'dark');
+    let graphHistory: GraphHistory = {
+      power: [...simStore.graphHistory.power],
+      cells: [...simStore.graphHistory.cells],
+      workers: [...simStore.graphHistory.workers],
+      factory: [...simStore.graphHistory.factory],
+    };
 
     let animationFrame = 0;
     let previousTime = performance.now();
@@ -1200,16 +1145,17 @@ export default function PowerGridBackground() {
 
     function publishMetrics(world: World) {
       const nextMetrics = deriveMetrics(world, currentStrategy.label, structureIndexRef.current);
-      setMetrics(nextMetrics);
-      setGraphHistory((previous) => ({
-        power: pushHistoryValue(previous.power, nextMetrics.powerPct),
-        cells: pushHistoryValue(previous.cells, nextMetrics.cellsPct),
+      graphHistory = {
+        power: pushHistoryValue(graphHistory.power, nextMetrics.powerPct),
+        cells: pushHistoryValue(graphHistory.cells, nextMetrics.cellsPct),
         workers: pushHistoryValue(
-          previous.workers,
+          graphHistory.workers,
           nextMetrics.workerCap > 0 ? (nextMetrics.workers / nextMetrics.workerCap) * 100 : 0,
         ),
-        factory: pushHistoryValue(previous.factory, nextMetrics.factoryPct),
-      }));
+        factory: pushHistoryValue(graphHistory.factory, nextMetrics.factoryPct),
+      };
+      simStore.setMetrics(nextMetrics);
+      simStore.setGraphHistory(graphHistory);
     }
 
     function buildNavigationGrid(
@@ -1926,7 +1872,7 @@ export default function PowerGridBackground() {
       );
       constrainPointToMap(worker, getWorkerRadius());
       worldRef.current.workers.push(worker);
-      addRipple(factory.x, factory.y, COLORS.green);
+      addRipple(factory.x, factory.y, palette.green);
     }
 
     function triggerWorkerMalfunction(worker: Worker) {
@@ -1938,13 +1884,13 @@ export default function PowerGridBackground() {
       worker.task = null;
       worker.carrying = null;
       clearWorkerRoute(worker);
-      addRipple(worker.x, worker.y, COLORS.danger);
+      addRipple(worker.x, worker.y, palette.danger);
     }
 
-    function spawnExplosion(x: number, y: number, palette?: string[]) {
-      const colors = palette && palette.length > 0
-        ? palette
-        : [COLORS.lime, COLORS.green, COLORS.ink];
+    function spawnExplosion(x: number, y: number, colorPalette?: string[]) {
+      const burstColors = colorPalette && colorPalette.length > 0
+        ? colorPalette
+        : [palette.lime, palette.green, palette.ink];
       for (let index = 0; index < 10; index += 1) {
         const angle = (index / 10) * Math.PI * 2 + Math.random() * 0.4;
         const speed = 42 + Math.random() * 52;
@@ -1955,16 +1901,16 @@ export default function PowerGridBackground() {
           vy: Math.sin(angle) * speed,
           life: 1,
           size: 2 + Math.random() * 2.2,
-          color: colors[index % colors.length],
+          color: burstColors[index % burstColors.length],
         });
       }
     }
 
     function removeWorkerWithBurst(worker: Worker) {
-      addRipple(worker.x, worker.y, COLORS.danger);
-      addRipple(worker.x + 4, worker.y - 4, COLORS.dangerLight);
-      addRipple(worker.x - 4, worker.y + 4, COLORS.dangerDark);
-      spawnExplosion(worker.x, worker.y, ['#FFB347', COLORS.dangerLight, COLORS.danger, COLORS.dangerDark]);
+      addRipple(worker.x, worker.y, palette.danger);
+      addRipple(worker.x + 4, worker.y - 4, palette.dangerLight);
+      addRipple(worker.x - 4, worker.y + 4, palette.dangerDark);
+      spawnExplosion(worker.x, worker.y, ['#FFB347', palette.dangerLight, palette.danger, palette.dangerDark]);
     }
 
     function getDefaultLanes(width: number, height: number) {
@@ -3084,7 +3030,7 @@ export default function PowerGridBackground() {
           worker.carrying = 'coal';
           worker.task.phase = 'deliver';
           clearWorkerRoute(worker);
-          addRipple(target.x, target.y, COLORS.lime);
+          addRipple(target.x, target.y, palette.lime);
           return;
         }
 
@@ -3093,7 +3039,7 @@ export default function PowerGridBackground() {
           worker.carrying = 'cell';
           worker.task.phase = 'deliver';
           clearWorkerRoute(worker);
-          addRipple(target.x, target.y, COLORS.green);
+          addRipple(target.x, target.y, palette.green);
           return;
         }
 
@@ -3102,7 +3048,7 @@ export default function PowerGridBackground() {
           worker.carrying = 'cell';
           worker.task.phase = 'deliver';
           clearWorkerRoute(worker);
-          addRipple(target.x, target.y, COLORS.green);
+          addRipple(target.x, target.y, palette.green);
           return;
         }
 
@@ -3111,7 +3057,7 @@ export default function PowerGridBackground() {
           worker.carrying = 'cell';
           worker.task.phase = 'deliver';
           clearWorkerRoute(worker);
-          addRipple(target.x, target.y, COLORS.green);
+          addRipple(target.x, target.y, palette.green);
           return;
         }
 
@@ -3141,7 +3087,7 @@ export default function PowerGridBackground() {
         target.pulse = 1;
       }
 
-      addRipple(target.x, target.y, COLORS.green);
+      addRipple(target.x, target.y, palette.green);
       worker.task = null;
       worker.carrying = null;
       clearWorkerRoute(worker);
@@ -3163,7 +3109,7 @@ export default function PowerGridBackground() {
           if (node.production >= 1 && node.outputCells < MAX_GENERATOR_OUTPUT) {
             node.production -= 1;
             node.outputCells += 1;
-            addRipple(node.x, node.y, COLORS.lime);
+            addRipple(node.x, node.y, palette.lime);
           }
         } else {
           node.production = Math.max(0, node.production - dt * 0.4);
@@ -3400,7 +3346,7 @@ export default function PowerGridBackground() {
 
         const gridCtx = gridCacheCanvas.getContext('2d');
         if (gridCtx) {
-          gridCtx.strokeStyle = COLORS.softInk;
+          gridCtx.strokeStyle = palette.softInk;
           gridCtx.lineWidth = 1;
           for (let x = 0; x < world.width; x += 32) {
             gridCtx.beginPath();
@@ -3439,7 +3385,7 @@ export default function PowerGridBackground() {
           return;
         }
 
-        backgroundCtx.fillStyle = COLORS.paper;
+        backgroundCtx.fillStyle = palette.paper;
         backgroundCtx.fillRect(0, 0, world.width, world.height);
 
         if (!gridCacheCanvas) {
@@ -3490,7 +3436,7 @@ export default function PowerGridBackground() {
           }, null);
 
           if (source) {
-            hintsCtx.strokeStyle = 'rgba(66, 66, 66, 0.22)';
+            hintsCtx.strokeStyle = palette.softInk;
             hintsCtx.beginPath();
             hintsCtx.moveTo(source.x, source.y);
             hintsCtx.lineTo(generator.x, generator.y);
@@ -3550,7 +3496,7 @@ export default function PowerGridBackground() {
           }, null);
 
           if (source) {
-            hintsCtx.strokeStyle = 'rgba(66, 66, 66, 0.18)';
+            hintsCtx.strokeStyle = palette.softInk;
             hintsCtx.beginPath();
             hintsCtx.moveTo(source.x, source.y);
             hintsCtx.lineTo(factory.x, factory.y);
@@ -3572,7 +3518,7 @@ export default function PowerGridBackground() {
       if (backgroundSceneCanvas) {
         backgroundCtx.drawImage(backgroundSceneCanvas, 0, 0, world.width, world.height);
       } else {
-        backgroundCtx.fillStyle = COLORS.paper;
+        backgroundCtx.fillStyle = palette.paper;
         backgroundCtx.fillRect(0, 0, world.width, world.height);
       }
 
@@ -3590,7 +3536,7 @@ export default function PowerGridBackground() {
     }
 
     function drawLabel(text: string, x: number, y: number) {
-      ctx.fillStyle = COLORS.ink;
+      ctx.fillStyle = palette.ink;
       ctx.fillText(text, Math.round(x), Math.round(y));
     }
 
@@ -3599,15 +3545,15 @@ export default function PowerGridBackground() {
       const y = Math.round(node.y);
 
       if (node.kind === 'coal') {
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 16, y - 12, 32, 24);
-        ctx.fillStyle = COLORS.paper;
+        ctx.fillStyle = palette.paper;
         ctx.fillRect(x - 14, y - 10, 28, 20);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 10, y - 6, 8, 8);
         ctx.fillRect(x - 1, y - 10, 10, 10);
         ctx.fillRect(x + 4, y + 1, 7, 7);
-        ctx.fillStyle = COLORS.green;
+        ctx.fillStyle = palette.green;
         ctx.fillRect(x - 12, y + 8, 24, 2);
         drawLabel('COAL', x, y + 28);
         return;
@@ -3615,20 +3561,20 @@ export default function PowerGridBackground() {
 
       if (node.kind === 'generator') {
         const fuelWidth = Math.round((node.fuel / 100) * 24);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 16, y - 14, 32, 28);
         ctx.fillRect(x + 6, y - 20, 8, 12);
-        ctx.fillStyle = COLORS.paper;
+        ctx.fillStyle = palette.paper;
         ctx.fillRect(x - 14, y - 12, 28, 24);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 8, y - 4, 14, 10);
-        ctx.fillStyle = COLORS.green;
+        ctx.fillStyle = palette.green;
         ctx.fillRect(x - 7, y - 3, 12, 8);
         ctx.fillStyle = 'rgba(185, 233, 55, 0.25)';
         ctx.fillRect(x - 14, y + 16, 28, 4);
-        ctx.fillStyle = COLORS.lime;
+        ctx.fillStyle = palette.lime;
         ctx.fillRect(x - 14, y + 16, fuelWidth, 4);
-        ctx.fillStyle = node.outputCells > 0 ? COLORS.green : COLORS.softInk;
+        ctx.fillStyle = node.outputCells > 0 ? palette.green : palette.softInk;
         ctx.fillRect(x - 12, y - 18, Math.min(4 + node.outputCells * 3, 18), 2);
         if (node.pulse > 0) {
           ctx.strokeStyle = `rgba(0, 185, 6, ${node.pulse * 0.6})`;
@@ -3641,13 +3587,13 @@ export default function PowerGridBackground() {
 
       if (node.kind === 'battery') {
         const chargeHeight = Math.round((node.charge / node.capacity) * 24);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 12, y - 17, 24, 34);
-        ctx.fillStyle = COLORS.paper;
+        ctx.fillStyle = palette.paper;
         ctx.fillRect(x - 10, y - 15, 20, 30);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 4, y - 21, 8, 4);
-        ctx.fillStyle = COLORS.green;
+        ctx.fillStyle = palette.green;
         ctx.fillRect(x - 8, y + 11 - chargeHeight, 16, chargeHeight);
         if (node.pulse > 0) {
           ctx.strokeStyle = `rgba(185, 233, 55, ${node.pulse * 0.65})`;
@@ -3660,15 +3606,15 @@ export default function PowerGridBackground() {
 
       if (node.kind === 'lab') {
         const energyWidth = Math.round((node.energy / 100) * 24);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 16, y - 13, 32, 26);
-        ctx.fillStyle = COLORS.paper;
+        ctx.fillStyle = palette.paper;
         ctx.fillRect(x - 14, y - 11, 28, 22);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 9, y - 6, 18, 12);
-        ctx.fillStyle = COLORS.green;
+        ctx.fillStyle = palette.green;
         ctx.fillRect(x - 7, y - 4, Math.max(6, energyWidth), 8);
-        ctx.fillStyle = COLORS.ink;
+        ctx.fillStyle = palette.ink;
         ctx.fillRect(x - 4, y + 13, 8, 4);
         if (node.pulse > 0) {
           ctx.strokeStyle = `rgba(0, 185, 6, ${node.pulse * 0.7})`;
@@ -3681,14 +3627,14 @@ export default function PowerGridBackground() {
 
       const factoryChargeWidth = Math.round((node.charge / 100) * 24);
       const buildWidth = Math.round((node.buildProgress / 100) * 24);
-      ctx.fillStyle = COLORS.ink;
+      ctx.fillStyle = palette.ink;
       ctx.fillRect(x - 18, y - 14, 36, 30);
-      ctx.fillStyle = COLORS.paper;
+      ctx.fillStyle = palette.paper;
       ctx.fillRect(x - 16, y - 12, 32, 26);
-      ctx.fillStyle = COLORS.ink;
+      ctx.fillStyle = palette.ink;
       ctx.fillRect(x - 10, y - 6, 8, 8);
       ctx.fillRect(x + 2, y - 6, 8, 8);
-      ctx.strokeStyle = COLORS.green;
+      ctx.strokeStyle = palette.green;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(x - 2, y - 2);
@@ -3698,9 +3644,9 @@ export default function PowerGridBackground() {
       ctx.stroke();
       ctx.fillStyle = 'rgba(185, 233, 55, 0.22)';
       ctx.fillRect(x - 14, y + 18, 28, 4);
-      ctx.fillStyle = COLORS.lime;
+      ctx.fillStyle = palette.lime;
       ctx.fillRect(x - 14, y + 18, factoryChargeWidth, 4);
-      ctx.fillStyle = COLORS.green;
+      ctx.fillStyle = palette.green;
       ctx.fillRect(x - 14, y - 18, buildWidth, 2);
       if (node.pulse > 0) {
         ctx.strokeStyle = `rgba(185, 233, 55, ${node.pulse * 0.7})`;
@@ -3715,42 +3661,42 @@ export default function PowerGridBackground() {
       isMalfunctioning: boolean,
       carrying: ItemType | null,
     ) {
-      const bodyLength = 8;
-      const tailLength = 5;
+      const bodyRadius = 6;
 
-      targetCtx.fillStyle = isMalfunctioning ? COLORS.dangerDark : COLORS.ink;
+      targetCtx.fillStyle = isMalfunctioning ? palette.dangerDark : palette.ink;
       targetCtx.beginPath();
-      targetCtx.moveTo(bodyLength, 0);
-      targetCtx.lineTo(-tailLength, -5);
-      targetCtx.lineTo(-1, 0);
-      targetCtx.lineTo(-tailLength, 5);
-      targetCtx.closePath();
+      targetCtx.arc(0, 0, bodyRadius, 0, Math.PI * 2);
       targetCtx.fill();
 
-      targetCtx.fillStyle = isMalfunctioning ? COLORS.dangerLight : COLORS.lime;
-      targetCtx.fillRect(1, -1, 2, 2);
+      targetCtx.strokeStyle = isMalfunctioning ? palette.danger : palette.lime;
+      targetCtx.lineWidth = 1.5;
+      targetCtx.beginPath();
+      targetCtx.arc(0, 0, bodyRadius - 1.5, 0, Math.PI * 2);
+      targetCtx.stroke();
+
+      targetCtx.fillStyle = isMalfunctioning ? palette.dangerLight : palette.lime;
+      targetCtx.beginPath();
+      targetCtx.arc(bodyRadius - 1.5, 0, 2, 0, Math.PI * 2);
+      targetCtx.fill();
 
       if (isMalfunctioning) {
-        targetCtx.strokeStyle = COLORS.danger;
+        targetCtx.strokeStyle = palette.danger;
         targetCtx.lineWidth = 1;
+        targetCtx.setLineDash([2, 2]);
         targetCtx.beginPath();
-        targetCtx.arc(0, 0, 8, 0, Math.PI * 2);
+        targetCtx.arc(0, 0, bodyRadius + 3, 0, Math.PI * 2);
         targetCtx.stroke();
+        targetCtx.setLineDash([]);
       }
 
       if (carrying) {
-        targetCtx.strokeStyle = COLORS.green;
-        targetCtx.lineWidth = 1;
+        targetCtx.fillStyle = carrying === 'coal' ? palette.ink : palette.green;
         targetCtx.beginPath();
-        targetCtx.moveTo(4, -2);
-        targetCtx.lineTo(8, -4);
-        targetCtx.moveTo(4, 2);
-        targetCtx.lineTo(8, 4);
+        targetCtx.arc(-bodyRadius - 2, 0, 3, 0, Math.PI * 2);
+        targetCtx.fill();
+        targetCtx.strokeStyle = carrying === 'coal' ? palette.lime : palette.ink;
+        targetCtx.lineWidth = 1;
         targetCtx.stroke();
-        targetCtx.fillStyle = carrying === 'coal' ? COLORS.ink : COLORS.green;
-        targetCtx.fillRect(7, -2, 4, 4);
-        targetCtx.strokeStyle = carrying === 'coal' ? COLORS.lime : COLORS.ink;
-        targetCtx.strokeRect(7, -2, 4, 4);
       }
     }
 
@@ -3929,10 +3875,21 @@ export default function PowerGridBackground() {
       }
     });
 
+    function handleThemeChange() {
+      palette = getPalette(document.documentElement.dataset.theme === 'dark');
+      backgroundSceneCanvas = null;
+      gridCacheCanvas = null;
+      networkHintsCanvas = null;
+      workerSpriteCache.clear();
+      invalidateStaticLayer();
+      warmWorkerSpriteCache();
+    }
+
     warmWorkerSpriteCache();
     resizeWorld();
     window.addEventListener('resize', resizeWorld);
     window.addEventListener('scroll', scheduleLayoutSync, { passive: true });
+    window.addEventListener('themechange', handleThemeChange);
     animationFrame = window.requestAnimationFrame(loop);
 
     return () => {
@@ -3943,6 +3900,7 @@ export default function PowerGridBackground() {
       layoutObserver.disconnect();
       window.removeEventListener('resize', resizeWorld);
       window.removeEventListener('scroll', scheduleLayoutSync);
+      window.removeEventListener('themechange', handleThemeChange);
     };
   }, []);
 
@@ -3982,107 +3940,6 @@ export default function PowerGridBackground() {
           contain: 'strict',
         }}
       />
-
-      <aside
-        className={`sim-hotbar ${isMenuMinimized ? 'is-minimized' : ''}`}
-        aria-label="Power grid simulation controls"
-      >
-        <div className="sim-hotbar__header">
-          <p className="sim-hotbar__eyebrow">Ambient power grid</p>
-        </div>
-
-        {!isMenuMinimized && isHelpOpen && (
-          <section id="boid-help-panel" className="sim-hotbar__help">
-            <h2 className="sim-hotbar__help-title">How it works</h2>
-            <p className="sim-hotbar__help-copy">
-              The worker-boids act like a homeostatic controller for the whole system. They continuously rotate through short strategic pushes so fuel, stored cells, lab energy, and worker count all stay in motion instead of letting one objective dominate forever.
-            </p>
-            <ul className="sim-hotbar__help-list">
-              <li><span className="sim-hotbar__token">Fuel push</span> sends more traffic toward coal, generators, and even new worker production if fuel stays stressed.</li>
-              <li><span className="sim-hotbar__token">Reserve balancing</span> shifts attention toward moving energy into batteries.</li>
-              <li><span className="sim-hotbar__token">Lab support</span> redirects traffic from storage into lab power.</li>
-              <li><span className="sim-hotbar__token">Factory ramp</span> and <span className="sim-hotbar__token">Crew recovery</span> raise factory priority when the swarm wants more workers or needs to replace faults.</li>
-              <li>The hallway routes stay adaptive, so the swarm replans as the page layout changes and keeps returning toward equilibrium.</li>
-            </ul>
-            <p className="sim-hotbar__help-note">
-              This simulation is tuned to surface rich, shifting behavior, so the swarm keeps producing new dynamics instead of settling into one static pattern.
-            </p>
-          </section>
-        )}
-
-        {!isMenuMinimized && (
-          <>
-            <div className="sim-hotbar__status-card">
-              <p className="sim-hotbar__status-label">Status</p>
-              <p className="sim-hotbar__status-value">{metrics.status}</p>
-            </div>
-            <div className="sim-hotbar__graphs" aria-label="Power grid trend graphs">
-              <MiniGraph
-                label="Power"
-                value={`${metrics.powerPct}%`}
-                detail="fuel + reserves"
-                values={graphHistory.power}
-                color={COLORS.green}
-              />
-              <MiniGraph
-                label="Cells"
-                value={`${metrics.cellsPct}%`}
-                detail="stored charge"
-                values={graphHistory.cells}
-                color={COLORS.lime}
-              />
-              <MiniGraph
-                label="Workers"
-                value={`${metrics.workers}/${metrics.workerCap}`}
-                detail={metrics.malfunctioning > 0 ? `${metrics.malfunctioning} faulty` : 'crew stable'}
-                values={graphHistory.workers}
-                color={COLORS.ink}
-              />
-              <MiniGraph
-                label="Factory"
-                value={`${metrics.factoryPct}%`}
-                detail={`${metrics.factoryCharge}% charge · ${metrics.factoryProgress}% build`}
-                values={graphHistory.factory}
-                color={COLORS.green}
-              />
-            </div>
-          </>
-        )}
-
-        <div className="sim-hotbar__footer">
-          <div className="sim-hotbar__actions">
-            <button
-              type="button"
-              className="sim-hotbar__icon-button"
-              aria-expanded={isHelpOpen && !isMenuMinimized}
-              aria-controls="boid-help-panel"
-              aria-label="About the boid simulation"
-              onClick={() => {
-                if (isMenuMinimized) {
-                  setIsMenuMinimized(false);
-                  setIsHelpOpen(true);
-                  return;
-                }
-
-                setIsHelpOpen((open) => !open);
-              }}
-            >
-              ?
-            </button>
-            <button
-              type="button"
-              className="sim-hotbar__icon-button"
-              aria-label={isMenuMinimized ? 'Expand boid menu' : 'Minimize boid menu'}
-              aria-expanded={!isMenuMinimized}
-              onClick={() => {
-                setIsMenuMinimized((collapsed) => !collapsed);
-              }}
-            >
-              {isMenuMinimized ? '+' : '–'}
-            </button>
-          </div>
-        </div>
-      </aside>
     </>
   );
 }

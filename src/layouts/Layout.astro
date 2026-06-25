@@ -1,5 +1,7 @@
 ---
 import PowerGridBackground from '../components/PowerGridBackground';
+import FactorybotsMenu from '../components/FactorybotsMenu';
+import ThemeToggle from '../components/ThemeToggle';
 import '../styles/global.css';
 
 export interface Props {
@@ -22,6 +24,13 @@ const isHomePage = Astro.url.pathname === '/';
     <link rel="icon" type="image/png" href="/apple-touch-icon.png" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
+    <script is:inline>
+      (() => {
+        const stored = localStorage.getItem('site-theme');
+        const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
   </head>
   <body class={isHomePage ? 'is-homepage' : undefined}>
     <PowerGridBackground client:idle />
@@ -32,6 +41,8 @@ const isHomePage = Astro.url.pathname === '/';
           Hrish Leen
         </a>
         <nav class="site-actions" aria-label="Primary">
+          <FactorybotsMenu client:load />
+          <ThemeToggle client:load />
           <a href="/resume.pdf" class="site-action site-action--primary" download data-sim-obstacle="header">
             Resume
           </a>
@@ -95,6 +106,8 @@ const isHomePage = Astro.url.pathname === '/';
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   .site-action {
@@ -105,7 +118,7 @@ const isHomePage = Astro.url.pathname === '/';
     padding: 0.56rem 0.9rem;
     border-radius: 999px;
     border: 1px solid var(--color-border);
-    background: rgba(245, 245, 245, 0.78);
+    background: rgba(var(--color-bg-primary-rgb), 0.78);
     color: var(--color-text-primary);
     text-decoration: none;
     font-size: 0.85rem;
@@ -123,7 +136,7 @@ const isHomePage = Astro.url.pathname === '/';
     transform: translateY(-1px);
     border-color: var(--color-accent);
     color: var(--color-accent);
-    background: rgba(245, 245, 245, 0.92);
+    background: rgba(var(--color-bg-primary-rgb), 0.92);
   }
 
   .site-action--primary {
